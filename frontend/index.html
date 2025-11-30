@@ -18,9 +18,15 @@
                 <h2>Status: <span id="connectionStatus">Checking...</span></h2>
                 <a href="/ai.html" style="text-decoration: none; color: #3498db; font-weight: bold;">⚙️ AI Settings</a>
             </div>
-            <div id="qrContainer" style="display: none;">
-                <p>Scan to Connect:</p>
-                <div id="qrCode"></div>
+            <!-- QR Modal -->
+            <div id="qrModal" class="modal">
+                <div class="modal-content">
+                    <span class="close">&times;</span>
+                    <h2>Scan to Connect</h2>
+                    <div id="qrContainer">
+                        <div id="qrCode"></div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -58,7 +64,31 @@
         <button class="refresh-btn" onclick="fetchStats()">Refresh Data</button>
     </div>
 
-    <script src="script.js"></script>
+    <script type="module">
+        import { checkAuth, logoutUser } from './auth.js';
+
+        checkAuth((user) => {
+            console.log("Logged in as:", user.email);
+            // Initialize app logic here if needed, or let script.js handle it
+            // We might need to expose user to global scope or dispatch event
+            window.currentUser = user;
+            document.dispatchEvent(new Event('user-logged-in'));
+        });
+
+        // Add logout button logic if it exists (we need to add one)
+        // For now, let's add a logout button to the header
+        const header = document.querySelector('.connection-card div');
+        if (header) {
+            const logoutBtn = document.createElement('button');
+            logoutBtn.textContent = 'Logout';
+            logoutBtn.onclick = logoutUser;
+            logoutBtn.style.marginLeft = '10px';
+            logoutBtn.style.padding = '5px 10px';
+            logoutBtn.style.cursor = 'pointer';
+            header.appendChild(logoutBtn);
+        }
+    </script>
+    <script type="module" src="script.js"></script>
 </body>
 
 </html>

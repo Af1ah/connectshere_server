@@ -4,11 +4,13 @@ const fileParser = require('../utils/fileParser');
 
 const getSettings = async (req, res) => {
     try {
-        const settings = await firebaseService.getAISettings();
+        const userId = req.user.uid;
+        const settings = await firebaseService.getAISettings(userId);
         if (settings) {
             res.json(settings);
         } else {
-            res.status(404).json({ error: 'Settings not found' });
+            // Return default settings if not found, or empty object
+            res.json({});
         }
     } catch (error) {
         console.error('Error fetching settings:', error);
@@ -18,12 +20,13 @@ const getSettings = async (req, res) => {
 
 const updateSettings = async (req, res) => {
     try {
+        const userId = req.user.uid;
         const { context, model } = req.body;
         if (!context || !model) {
             return res.status(400).json({ error: 'Context and model are required' });
         }
 
-        const success = await firebaseService.updateAISettings({ context, model });
+        const success = await firebaseService.updateAISettings(userId, { context, model });
         if (success) {
             res.json({ message: 'Settings updated successfully' });
         } else {
@@ -52,7 +55,8 @@ const uploadFile = async (req, res) => {
             timestamp: new Date().toISOString()
         };
 
-        const success = await firebaseService.addFileContent(fileData);
+        const userId = req.user.uid;
+        const success = await firebaseService.addFileContent(userId, fileData);
         if (success) {
             res.json({ message: 'File uploaded and processed successfully', file: fileData });
         } else {
@@ -67,7 +71,8 @@ const uploadFile = async (req, res) => {
 const deleteFile = async (req, res) => {
     try {
         const { id } = req.params;
-        const success = await firebaseService.removeFileContent(id);
+        const userId = req.user.uid;
+        const success = await firebaseService.removeFileContent(userId, id);
         if (success) {
             res.json({ message: 'File deleted successfully' });
         } else {

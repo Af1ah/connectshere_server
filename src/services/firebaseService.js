@@ -3,7 +3,8 @@ const { collection, addDoc, query, where, orderBy, limit, getDocs, serverTimesta
 
 const saveMessage = async (userId, role, content) => {
     try {
-        const messagesRef = collection(db, 'conversations', userId, 'messages');
+        // Store messages under the user's document
+        const messagesRef = collection(db, 'users', userId, 'messages');
         await addDoc(messagesRef, {
             role,
             content,
@@ -33,13 +34,13 @@ const updateUserStats = async (userId) => {
 const logTokenUsage = async (userId, inputTokens, outputTokens) => {
     try {
         const data = {
-            userId,
             inputTokens,
             outputTokens,
             totalTokens: inputTokens + outputTokens,
             timestamp: serverTimestamp()
         };
-        const usageRef = collection(db, 'usage');
+        // Store usage under the user's document
+        const usageRef = collection(db, 'users', userId, 'usage');
         await addDoc(usageRef, data);
     } catch (error) {
         console.error('Error logging token usage:', error);
@@ -48,7 +49,7 @@ const logTokenUsage = async (userId, inputTokens, outputTokens) => {
 
 const getConversationHistory = async (userId, messageLimit = 10) => {
     try {
-        const messagesRef = collection(db, 'conversations', userId, 'messages');
+        const messagesRef = collection(db, 'users', userId, 'messages');
         const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(messageLimit));
 
         const querySnapshot = await getDocs(q);
@@ -69,31 +70,36 @@ const getConversationHistory = async (userId, messageLimit = 10) => {
     }
 };
 
-const getDashboardStats = async () => {
+const getDashboardStats = async (userId) => {
     try {
-        // Get total users
-        const usersRef = collection(db, 'users');
-        const usersSnapshot = await getCountFromServer(usersRef);
-        const totalUsers = usersSnapshot.data().count;
+        // Get user specific stats
+        const userRef = doc(db, 'users', userId);
+        const userSnap = await getDoc(userRef);
 
-        // Get total usage
-        const usageRef = collection(db, 'usage');
+        let interactionCount = 0;
+        if (userSnap.exists()) {
+            interactionCount = userSnap.data().interactionCount || 0;
+        }
+
+        // Get total tokens for this user
+        const usageRef = collection(db, 'users', userId, 'usage');
         const usageSnapshot = await getDocs(usageRef);
         let totalTokens = 0;
         usageSnapshot.forEach(doc => {
             totalTokens += (doc.data().totalTokens || 0);
         });
 
-        // Get recent users
-        const recentUsersQuery = query(usersRef, orderBy('lastActive', 'desc'), limit(10));
-        const recentUsersSnapshot = await getDocs(recentUsersQuery);
+        // For "Recent Users", since this is a user dashboard, maybe show recent sessions or just self?
+        // The requirement said "different dashboards for different users.(only user view their details only)."
+        // So we only return this user's data.
+
         const recentUsers = [];
-        recentUsersSnapshot.forEach(doc => {
-            recentUsers.push({ id: doc.id, ...doc.data() });
-        });
+        if (userSnap.exists()) {
+            recentUsers.push({ id: userId, ...userSnap.data() });
+        }
 
         return {
-            totalUsers,
+            totalUsers: 1, // Only seeing self
             totalTokens,
             recentUsers
         };
@@ -103,12 +109,10 @@ const getDashboardStats = async () => {
     }
 };
 
-const getAISettings = async () => {
+const getAISettings = async (userId) => {
     try {
-        const docRef = doc(db, 'settings', 'ai_config');
-        const docSnap = await getDocs(query(collection(db, 'settings'), where('__name__', '==', 'ai_config'))); // Workaround if getDoc fails or just use getDoc
-        // actually getDoc is better
-        const snapshot = await require('firebase/firestore').getDoc(docRef);
+        const docRef = doc(db, 'users', userId, 'settings', 'ai_config');
+        const snapshot = await getDoc(docRef);
 
         if (snapshot.exists()) {
             return snapshot.data();
@@ -121,9 +125,9 @@ const getAISettings = async () => {
     }
 };
 
-const updateAISettings = async (settings) => {
+const updateAISettings = async (userId, settings) => {
     try {
-        const docRef = doc(db, 'settings', 'ai_config');
+        const docRef = doc(db, 'users', userId, 'settings', 'ai_config');
         await setDoc(docRef, settings, { merge: true });
         return true;
     } catch (error) {
@@ -132,14 +136,15 @@ const updateAISettings = async (settings) => {
     }
 };
 
-const addFileContent = async (fileData) => {
+const addFileContent = async (userId, fileData) => {
     try {
-        const docRef = doc(db, 'settings', 'ai_config');
+        const docRef = doc(db, 'users', userId, 'settings', 'ai_config');
         // Use arrayUnion to add the file object to the 'files' array
         const { arrayUnion } = require('firebase/firestore');
-        await updateDoc(docRef, {
+        // Ensure document exists first or setDoc with merge will handle it
+        await setDoc(docRef, {
             files: arrayUnion(fileData)
-        });
+        }, { merge: true });
         return true;
     } catch (error) {
         console.error('Error adding file content:', error);
@@ -147,9 +152,9 @@ const addFileContent = async (fileData) => {
     }
 };
 
-const removeFileContent = async (fileId) => {
+const removeFileContent = async (userId, fileId) => {
     try {
-        const docRef = doc(db, 'settings', 'ai_config');
+        const docRef = doc(db, 'users', userId, 'settings', 'ai_config');
         const snapshot = await getDoc(docRef);
         if (snapshot.exists()) {
             const data = snapshot.data();

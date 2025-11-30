@@ -16,8 +16,26 @@ app.use('/api', apiRoutes)
 
 // Start Services
 aiService.initialize()
-whatsappService.initialize()
+// Start Services
+aiService.initialize()
+// whatsappService.initialize() // Removed global init, now per-user
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
 })
+
+server.on('error', (e) => {
+    console.error('Server Error:', e);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('exit', (code) => {
+    console.log(`About to exit with code: ${code}`);
+});

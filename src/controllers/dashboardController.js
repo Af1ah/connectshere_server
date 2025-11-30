@@ -2,7 +2,8 @@ const firebaseService = require('../services/firebaseService');
 
 const getDashboardStats = async (req, res) => {
     try {
-        const stats = await firebaseService.getDashboardStats();
+        const userId = req.user.uid;
+        const stats = await firebaseService.getDashboardStats(userId);
         res.json(stats);
     } catch (error) {
         console.error('Error fetching dashboard stats:', error);

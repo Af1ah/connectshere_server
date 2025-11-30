@@ -120,16 +120,42 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { checkAuth, getToken } from './auth.js';
+
+        checkAuth((user) => {
+            console.log("Logged in as:", user.email);
+            window.currentUser = user;
+            // Trigger load settings after auth
+            loadSettings();
+        });
+
+        // Expose functions to global scope for onclick handlers
+        window.uploadFile = uploadFile;
+        window.saveSettings = saveSettings;
+        window.deleteFile = deleteFile;
+
+        // We need to move the functions inside or export them, 
+        // but since they are called by onclick, attaching to window is easiest for now.
+        // However, we need getToken inside them.
+
         async function loadSettings() {
             try {
-                const response = await fetch('/api/settings/ai');
+                const token = await getToken();
+                if (!token) return;
+
+                const response = await fetch('/api/settings/ai', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
                 const data = await response.json();
 
                 const modelSelect = document.getElementById('modelSelect');
                 modelSelect.innerHTML = '';
 
-                data.availableModels.forEach(model => {
+                // Handle case where availableModels might be missing or data is empty
+                const models = data.availableModels || ['gemini-2.0-flash', 'gemini-1.5-flash'];
+
+                models.forEach(model => {
                     const option = document.createElement('option');
                     option.value = model;
                     option.textContent = model;
@@ -139,7 +165,7 @@
                     modelSelect.appendChild(option);
                 });
 
-                document.getElementById('contextInput').value = data.context;
+                document.getElementById('contextInput').value = data.context || '';
 
                 renderFilesList(data.files || []);
 
@@ -184,6 +210,9 @@
                 return;
             }
 
+            const token = await getToken();
+            if (!token) return;
+
             const formData = new FormData();
             formData.append('file', file);
 
@@ -194,6 +223,7 @@
             try {
                 const response = await fetch('/api/settings/upload', {
                     method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
                     body: formData
                 });
 
@@ -219,9 +249,13 @@
                 return;
             }
 
+            const token = await getToken();
+            if (!token) return;
+
             try {
                 const response = await fetch(`/api/settings/files/${id}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
 
                 if (response.ok) {
@@ -241,6 +275,9 @@
             const context = document.getElementById('contextInput').value;
             const btn = document.querySelector('.save-btn');
 
+            const token = await getToken();
+            if (!token) return;
+
             btn.disabled = true;
             btn.textContent = 'Saving...';
 
@@ -248,7 +285,8 @@
                 const response = await fetch('/api/settings/ai', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({ model, context })
                 });
@@ -276,9 +314,6 @@
                 msgDiv.style.display = 'none';
             }, 3000);
         }
-
-        // Initial load
-        loadSettings();
     </script>
 </body>
 

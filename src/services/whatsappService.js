@@ -1,74 +1,98 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys')
-const path = require('path')
-const fs = require('fs')
-const aiService = require('./aiService')
-const pino = require('pino')
+const { default: makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
+const useFirebaseAuthState = require('./firebaseAuthState');
+const aiService = require('./aiService');
+const pino = require('pino');
 
-let sock
-let qrCode = null
-let connectionStatus = 'disconnected'
+const sessions = new Map(); // userId -> { sock, qr, status, retryCount }
 
-const initialize = async () => {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
+const initialize = async (userId) => {
+    const session = sessions.get(userId);
+    if (session && ['connected', 'connecting', 'scanning'].includes(session.status)) {
+        return;
+    }
 
-    sock = makeWASocket({
+    const { state, saveCreds } = await useFirebaseAuthState(userId);
+
+    const sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
-        // printQRInTerminal: true // Removed to prevent terminal spam
-        connectTimeoutMs: 60000, // Increase timeout
-        retryRequestDelayMs: 2000, // Delay retries
-    })
+        connectTimeoutMs: 60000,
+        retryRequestDelayMs: 2000,
+    });
 
-    sock.ev.on('creds.update', saveCreds)
+    // Initialize session state
+    sessions.set(userId, { sock, qr: null, status: 'connecting', retryCount: 0 });
+
+    sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update
+        const { connection, lastDisconnect, qr } = update;
+        const session = sessions.get(userId);
 
         if (qr) {
-            qrCode = qr
-            connectionStatus = 'scanning'
+            session.qr = qr;
+            session.status = 'scanning';
+            sessions.set(userId, session);
         }
 
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut
-            console.log('connection closed due to ', lastDisconnect.error, ', reconnecting ', shouldReconnect)
-            connectionStatus = 'disconnected'
+            const statusCode = (lastDisconnect.error)?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 408;
 
-            // Prevent rapid reconnection loops
+            console.log(`User ${userId}: connection closed due to `, lastDisconnect.error, ', reconnecting ', shouldReconnect);
+
+            session.status = 'disconnected';
+            session.qr = null;
+            sessions.set(userId, session);
+
             if (shouldReconnect) {
+                // Exponential backoff or simple delay
                 setTimeout(() => {
-                    initialize()
-                }, 5000) // Wait 5 seconds before reconnecting
+                    initialize(userId);
+                }, 5000);
+            } else {
+                // Clean up if logged out or QR timed out
+                if (statusCode === 408) {
+                    console.log(`User ${userId}: QR scan timed out. Please try again.`);
+                }
+                sessions.delete(userId);
             }
         } else if (connection === 'open') {
-            console.log('opened connection')
-            connectionStatus = 'connected'
-            qrCode = null
+            console.log(`User ${userId}: opened connection`);
+            session.status = 'connected';
+            session.qr = null;
+            session.retryCount = 0;
+            sessions.set(userId, session);
         }
-    })
+    });
 
     sock.ev.on('messages.upsert', async m => {
-        const msg = m.messages[0]
+        const msg = m.messages[0];
         if (!msg.key.fromMe && m.type === 'notify') {
-            const messageContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text
+            const messageContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
             if (messageContent) {
                 try {
-                    // Generate AI response
-                    const response = await aiService.generateResponse(messageContent, msg.key.remoteJid)
-                    await sock.sendMessage(msg.key.remoteJid, { text: response })
+                    // Generate AI response with user context
+                    const response = await aiService.generateResponse(messageContent, userId);
+                    await sock.sendMessage(msg.key.remoteJid, { text: response });
                 } catch (error) {
-                    console.error('Error processing message:', error)
+                    console.error(`User ${userId}: Error processing message:`, error);
                 }
             }
         }
-    })
-}
+    });
+};
 
-const getQR = () => qrCode
-const getStatus = () => connectionStatus
+const getQR = (userId) => {
+    return sessions.get(userId)?.qr || null;
+};
+
+const getStatus = (userId) => {
+    return sessions.get(userId)?.status || 'disconnected';
+};
 
 module.exports = {
     initialize,
     getQR,
     getStatus
-}
+};

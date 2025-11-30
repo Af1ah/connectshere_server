@@ -26,7 +26,7 @@ const generateResponse = async (userMessage, userId) => {
     }
 
     // Fetch dynamic settings
-    const settings = await firebaseService.getAISettings();
+    const settings = await firebaseService.getAISettings(userId);
     const currentContext = settings?.context || contextData;
     const currentModel = settings?.model || modelName;
 
