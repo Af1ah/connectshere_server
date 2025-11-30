@@ -6,11 +6,27 @@ const getSettings = async (req, res) => {
     try {
         const userId = req.user.uid;
         const settings = await firebaseService.getAISettings(userId);
+
+        // Define the allowed models for all users
+        const availableModels = [
+            'gemini-2.5-flash',
+            'gemini-2.5-flash-lite',
+            'gemini-2.0-flash',
+            'gemini-2.0-flash-lite'
+        ];
+
         if (settings) {
-            res.json(settings);
+            res.json({
+                ...settings,
+                availableModels
+            });
         } else {
-            // Return default settings if not found, or empty object
-            res.json({});
+            // Return default settings if not found
+            res.json({
+                availableModels,
+                model: 'gemini-2.0-flash', // default model
+                context: ''
+            });
         }
     } catch (error) {
         console.error('Error fetching settings:', error);

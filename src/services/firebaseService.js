@@ -173,6 +173,65 @@ const removeFileContent = async (userId, fileId) => {
     }
 };
 
+const queueMessage = async (userId, messageData) => {
+    try {
+        const queueRef = collection(db, 'users', userId, 'messageQueue');
+        await addDoc(queueRef, {
+            ...messageData,
+            queuedAt: serverTimestamp(),
+            processed: false
+        });
+        return true;
+    } catch (error) {
+        console.error('Error queuing message:', error);
+        return false;
+    }
+};
+
+const getQueuedMessages = async (userId) => {
+    try {
+        const queueRef = collection(db, 'users', userId, 'messageQueue');
+        // Simplified query to avoid composite index requirement
+        const q = query(queueRef, where('processed', '==', false));
+
+        const querySnapshot = await getDocs(q);
+        const messages = [];
+
+        querySnapshot.forEach((doc) => {
+            messages.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+
+        // Sort manually by queuedAt in ascending order
+        messages.sort((a, b) => {
+            const timeA = a.queuedAt?.toMillis?.() || 0;
+            const timeB = b.queuedAt?.toMillis?.() || 0;
+            return timeA - timeB;
+        });
+
+        return messages;
+    } catch (error) {
+        console.error('Error getting queued messages:', error);
+        return [];
+    }
+};
+
+const clearQueuedMessage = async (userId, messageId) => {
+    try {
+        const messageRef = doc(db, 'users', userId, 'messageQueue', messageId);
+        await updateDoc(messageRef, {
+            processed: true,
+            processedAt: serverTimestamp()
+        });
+        return true;
+    } catch (error) {
+        console.error('Error clearing queued message:', error);
+        return false;
+    }
+};
+
 module.exports = {
     saveMessage,
     getConversationHistory,
@@ -182,5 +241,8 @@ module.exports = {
     getAISettings,
     updateAISettings,
     addFileContent,
-    removeFileContent
+    removeFileContent,
+    queueMessage,
+    getQueuedMessages,
+    clearQueuedMessage
 };
