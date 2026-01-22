@@ -166,8 +166,50 @@ const getStatus = (userId) => {
     return sessions.get(userId)?.status || 'disconnected';
 };
 
+const disconnect = async (userId) => {
+    const session = sessions.get(userId);
+    if (session && session.sock) {
+        try {
+            // Close the socket connection
+            session.sock.end();
+            console.log(`User ${userId}: WhatsApp connection closed`);
+        } catch (error) {
+            console.error(`User ${userId}: Error closing connection:`, error);
+        }
+    }
+    // Remove the session from the map
+    sessions.delete(userId);
+    console.log(`User ${userId}: Session removed from memory`);
+};
+
+const clearCredentials = async (userId) => {
+    const { db } = require('../config/firebase');
+    const { collection, getDocs, deleteDoc } = require('firebase/firestore');
+
+    // First disconnect if connected
+    await disconnect(userId);
+
+    try {
+        // Get all documents in the whatsapp_creds subcollection
+        const credsCollectionRef = collection(db, 'users', userId, 'whatsapp_creds');
+        const snapshot = await getDocs(credsCollectionRef);
+
+        // Delete each document
+        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+
+        console.log(`User ${userId}: Cleared ${snapshot.docs.length} credential documents from Firebase`);
+        return { deleted: snapshot.docs.length };
+    } catch (error) {
+        console.error(`User ${userId}: Error clearing credentials:`, error);
+        throw error;
+    }
+};
+
 module.exports = {
     initialize,
     getQR,
-    getStatus
+    getStatus,
+    disconnect,
+    clearCredentials
 };

@@ -18,6 +18,17 @@
                 <h2>Status: <span id="connectionStatus">Checking...</span></h2>
                 <a href="/ai.html" style="text-decoration: none; color: #3498db; font-weight: bold;">⚙️ AI Settings</a>
             </div>
+            
+            <!-- Connection Control Buttons -->
+            <div id="connectionControls" class="connection-controls" style="display: none;">
+                <button id="disconnectBtn" class="btn-danger" onclick="disconnectWhatsApp()">
+                    🔌 Disconnect
+                </button>
+                <button id="clearCredsBtn" class="btn-warning" onclick="clearCredentials()">
+                    🗑️ Clear Credentials & Reconnect
+                </button>
+            </div>
+            
             <!-- QR Modal -->
             <div id="qrModal" class="modal">
                 <div class="modal-content">

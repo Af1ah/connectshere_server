@@ -33,7 +33,41 @@ const getStatus = (req, res) => {
     res.json({ status });
 }
 
+const disconnect = async (req, res) => {
+    const startTime = Date.now();
+    const userId = req.user.uid;
+
+    try {
+        console.log(`[${new Date().toISOString()}] 🔌 /api/disconnect - User: ${userId} requesting disconnect`);
+        await whatsappService.disconnect(userId);
+        const elapsedTime = Date.now() - startTime;
+        console.log(`[${new Date().toISOString()}] ✅ /api/disconnect - User: ${userId} disconnected (${elapsedTime}ms)`);
+        res.json({ success: true, message: 'WhatsApp disconnected' });
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] ❌ /api/disconnect - Error:`, error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+const clearCredentials = async (req, res) => {
+    const startTime = Date.now();
+    const userId = req.user.uid;
+
+    try {
+        console.log(`[${new Date().toISOString()}] 🗑️ /api/credentials - User: ${userId} clearing credentials`);
+        const result = await whatsappService.clearCredentials(userId);
+        const elapsedTime = Date.now() - startTime;
+        console.log(`[${new Date().toISOString()}] ✅ /api/credentials - User: ${userId} cleared ${result.deleted} docs (${elapsedTime}ms)`);
+        res.json({ success: true, message: 'Credentials cleared', ...result });
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] ❌ /api/credentials - Error:`, error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
 module.exports = {
     getQR,
-    getStatus
+    getStatus,
+    disconnect,
+    clearCredentials
 }

@@ -28,6 +28,8 @@ router.use(verifyToken);
 
 router.get('/qr', whatsappController.getQR);
 router.get('/status', whatsappController.getStatus);
+router.post('/disconnect', whatsappController.disconnect);
+router.delete('/credentials', whatsappController.clearCredentials);
 router.get('/dashboard/stats', dashboardController.getDashboardStats);
 
 router.get('/settings/ai', settingsController.getSettings);
