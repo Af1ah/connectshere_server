@@ -1,6 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 const contextData = require('../config/context');
 const firebaseService = require('./firebaseService');
+const knowledgeService = require('./knowledgeService');
 
 let ai = null;
 const modelName = 'gemini-2.0-flash';
@@ -28,7 +29,7 @@ const shouldReplyToMessage = (userMessage) => {
     return replyTriggers.some(trigger => trigger.test(userMessage));
 };
 
-const generateResponse = async (userMessage, userId) => {
+const generateResponse = async (userMessage, userId, senderPhone = 'Unknown') => {
     if (!ai) {
         return "I'm currently offline. Please try again later.";
     }
@@ -40,24 +41,138 @@ const generateResponse = async (userMessage, userId) => {
 
     // Fetch dynamic settings
     const settings = await firebaseService.getAISettings(userId);
-    const currentContext = settings?.context || contextData;
+    const baseContext = settings?.context || '';
     const currentModel = settings?.model || modelName;
 
-    // Append file content to context
-    let fullContext = currentContext;
-    if (settings?.files && settings.files.length > 0) {
-        fullContext += '\n\n--- ADDITIONAL KNOWLEDGE BASE ---\n';
-        settings.files.forEach(file => {
-            fullContext += `\n[File: ${file.name} (${file.type})]\n${file.content}\n`;
-        });
+    // Use RAG to get relevant context based on user message
+    let ragContext = '';
+    try {
+        ragContext = await knowledgeService.buildContext(userId, userMessage);
+    } catch (error) {
+        console.error('Error fetching RAG context:', error);
     }
 
-    const tools = [];
+    // Combine base context with RAG context
+    let fullContext = baseContext;
+    if (ragContext) {
+        fullContext += '\n\n' + ragContext;
+    }
+
+    // Check if consultant booking is enabled and add instructions
+    let consultantInstructions = '';
+    try {
+        const consultantService = require('./consultantService');
+        const consultantSettings = await consultantService.getSettings(userId);
+
+        if (consultantSettings?.enabled) {
+            const nextDates = await consultantService.getNextAvailableDates(userId, 3);
+            const datesList = nextDates.map((d, i) =>
+                `${i + 1}️⃣ ${d.dayName.charAt(0).toUpperCase() + d.dayName.slice(1)} (${d.date}) - ${d.availableSlots} slots`
+            ).join('\n');
+
+            consultantInstructions = `
+
+CONSULTANT BOOKING CAPABILITY:
+You can help users book consultations. When a user naturally asks about:
+- booking an appointment/consultation
+- scheduling a meeting with consultant/expert/doctor
+- checking availability for consultations
+- wanting advice or professional consultation
+
+BOOKING FLOW:
+1. First understand their need - ask what they want to consult about (brief question)
+2. Once you understand, offer date options:
+   "When would you like to book?
+   ${datesList}
+   
+   Reply with the number or say 'other' for different date"
+3. After date selection, I'll show available time slots
+4. Confirm all details before finalizing
+
+IMPORTANT RULES:
+- Don't hardcode detection - understand intent naturally from conversation
+- Keep responses SHORT (2-3 sentences max)
+- One step at a time
+- If user seems to be asking about consultation services, guide them naturally
+- Available timezone: Asia/Kolkata (IST)
+`;
+        }
+    } catch (error) {
+        console.error('Error loading consultant settings:', error);
+    }
+
+    // Define function declarations for consultant booking
+    const bookingTools = [];
+    let consultantServiceRef = null;
+
+    try {
+        consultantServiceRef = require('./consultantService');
+        const consultantSettings = await consultantServiceRef.getSettings(userId);
+
+        if (consultantSettings?.enabled) {
+            bookingTools.push({
+                functionDeclarations: [
+                    {
+                        name: 'get_available_slots',
+                        description: 'Get available time slots for a specific date. Call this when user wants to see available times for booking.',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                date: {
+                                    type: 'string',
+                                    description: 'Date in YYYY-MM-DD format (e.g., 2026-01-27)'
+                                }
+                            },
+                            required: ['date']
+                        }
+                    },
+                    {
+                        name: 'create_booking',
+                        description: 'Create a consultation booking. Call this when user confirms they want to book a specific time slot.',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                date: {
+                                    type: 'string',
+                                    description: 'Date in YYYY-MM-DD format'
+                                },
+                                timeSlot: {
+                                    type: 'string',
+                                    description: 'Time slot in HH:MM format (e.g., 14:00)'
+                                },
+                                reason: {
+                                    type: 'string',
+                                    description: 'Reason for consultation'
+                                }
+                            },
+                            required: ['date', 'timeSlot']
+                        }
+                    },
+                    {
+                        name: 'get_next_available_dates',
+                        description: 'Get the next available dates for booking consultations',
+                        parameters: {
+                            type: 'object',
+                            properties: {
+                                count: {
+                                    type: 'number',
+                                    description: 'Number of dates to return (default 5)'
+                                }
+                            }
+                        }
+                    }
+                ]
+            });
+        }
+    } catch (error) {
+        console.error('Error setting up booking tools:', error);
+    }
+
     const config = {
         temperature: 0.7,
-        maxOutputTokens: 500, // Increased to prevent truncation, relying on system prompt for brevity
+        maxOutputTokens: 500,
         mediaResolution: 'MEDIA_RESOLUTION_UNSPECIFIED',
-        tools,
+        tools: bookingTools,
         systemInstruction: [
             {
                 text: `You are 'ConnectSphere', a WhatsApp customer support assistant for a business.
@@ -109,7 +224,8 @@ GOAL:
 - One step at a time, confirm, then continue
 
 CONTEXT DATA:
-${fullContext}`,
+${fullContext}
+${consultantInstructions}`,
             }
         ],
     };
@@ -132,13 +248,80 @@ ${fullContext}`,
     ];
 
     try {
-        const result = await ai.models.generateContent({
+        let result = await ai.models.generateContent({
             model: currentModel,
             config,
             contents,
         });
 
-        const responseText = result.text;
+        // Handle function calls
+        let responseText = result.text;
+
+        // Check if there's a function call
+        if (result.candidates?.[0]?.content?.parts) {
+            for (const part of result.candidates[0].content.parts) {
+                if (part.functionCall) {
+                    const functionName = part.functionCall.name;
+                    const args = part.functionCall.args || {};
+
+                    console.log(`Function call: ${functionName}`, args);
+
+                    let functionResult = {};
+
+                    try {
+                        if (functionName === 'get_available_slots' && consultantServiceRef) {
+                            functionResult = await consultantServiceRef.getAvailableSlots(userId, args.date);
+                        } else if (functionName === 'create_booking' && consultantServiceRef) {
+                            // Use the sender's phone number from WhatsApp
+                            functionResult = await consultantServiceRef.createBooking(userId, {
+                                phone: senderPhone,
+                                name: 'WhatsApp Customer',
+                                reason: args.reason || 'Via WhatsApp',
+                                date: args.date,
+                                timeSlot: args.timeSlot
+                            });
+                        } else if (functionName === 'get_next_available_dates' && consultantServiceRef) {
+                            functionResult = await consultantServiceRef.getNextAvailableDates(userId, args.count || 5);
+                        }
+                    } catch (err) {
+                        console.error('Function execution error:', err);
+                        functionResult = { error: 'Failed to execute booking action' };
+                    }
+
+                    // Send function result back to model for final response
+                    const functionResponseContents = [
+                        ...contents,
+                        {
+                            role: 'model',
+                            parts: [{ functionCall: part.functionCall }]
+                        },
+                        {
+                            role: 'function',
+                            parts: [{
+                                functionResponse: {
+                                    name: functionName,
+                                    response: { result: functionResult }
+                                }
+                            }]
+                        }
+                    ];
+
+                    const followUpResult = await ai.models.generateContent({
+                        model: currentModel,
+                        config: { ...config, tools: [] }, // Remove tools for follow-up to get text response
+                        contents: functionResponseContents,
+                    });
+
+                    responseText = followUpResult.text;
+                    result = followUpResult;
+                }
+            }
+        }
+
+        // Ensure responseText is never undefined or null
+        if (!responseText) {
+            responseText = "I processed your request. Is there anything else I can help with?";
+        }
 
         // Calculate or estimate token usage
         let inputTokens = 0;

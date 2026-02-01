@@ -35,12 +35,29 @@ router.get('/dashboard/stats', dashboardController.getDashboardStats);
 router.get('/settings/ai', settingsController.getSettings);
 router.post('/settings/ai', settingsController.updateSettings);
 
+const consultantController = require('../controllers/consultantController');
+
 // File Upload Routes
 router.post('/settings/upload', upload.single('file'), settingsController.uploadFile);
 router.delete('/settings/files/:id', settingsController.deleteFile);
+
+// Knowledge Base Routes (RAG)
+router.get('/knowledge', settingsController.listKnowledge);
+router.post('/knowledge', settingsController.addKnowledge);
+router.delete('/knowledge/:source', settingsController.deleteKnowledge);
+
+// Consultant Booking Routes
+router.get('/consultant/settings', consultantController.getSettings);
+router.post('/consultant/settings', consultantController.updateSettings);
+router.get('/consultant/slots/:date', consultantController.getAvailableSlots);
+router.get('/consultant/next-dates', consultantController.getNextDates);
+router.post('/consultant/bookings', consultantController.createBooking);
+router.get('/consultant/bookings', consultantController.getBookings);
+router.put('/consultant/bookings/:id/status', consultantController.updateBookingStatus);
 
 // Config Routes (Moved up to be public)
 // router.get('/config/firebase', ... ); 
 
 module.exports = router;
+
 

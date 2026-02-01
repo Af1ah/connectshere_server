@@ -4,6 +4,7 @@ const path = require('path')
 const apiRoutes = require('./src/routes/api')
 const whatsappService = require('./src/services/whatsappService')
 const aiService = require('./src/services/aiService')
+const knowledgeService = require('./src/services/knowledgeService')
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -16,8 +17,7 @@ app.use('/api', apiRoutes)
 
 // Start Services
 aiService.initialize()
-// Start Services
-aiService.initialize()
+knowledgeService.initialize()
 // whatsappService.initialize() // Removed global init, now per-user
 
 const server = app.listen(PORT, () => {

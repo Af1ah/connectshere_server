@@ -14,19 +14,28 @@ const processMessage = async (sock, msg, userId) => {
         // Send read receipt (blue tick) when starting to process
         await sock.readMessages([msg.key]);
 
-        // Show typing indicator
+        // Show typing indicator while generating response
         await sock.sendPresenceUpdate('composing', msg.key.remoteJid);
 
-        // Generate AI response
-        const response = await aiService.generateResponse(messageContent, userId);
+        // Extract sender's phone number
+        // Handle different formats: @s.whatsapp.net, @g.us (groups), @lid (linked ID)
+        let senderPhone = 'Unknown';
+        const remoteJid = msg.key.remoteJid || '';
 
-        // Calculate realistic typing delay based on full response length
-        // Average typing speed: ~50 words/minute = ~3 characters/second
-        const typingDelay = Math.min(response.length / 3 * 1000, 8000); // Cap at 8 seconds
+        // For @lid format or groups, try to get actual phone from participant
+        if (msg.key.participant) {
+            senderPhone = msg.key.participant.replace('@s.whatsapp.net', '').replace('@lid', '');
+        } else if (remoteJid.includes('@s.whatsapp.net')) {
+            senderPhone = remoteJid.replace('@s.whatsapp.net', '');
+        } else if (remoteJid.includes('@lid')) {
+            // LID format - use as-is or extract number portion
+            senderPhone = remoteJid.replace('@lid', '');
+        } else {
+            senderPhone = remoteJid.split('@')[0];
+        }
 
-        // Show typing indicator for the calculated duration
-        await sock.sendPresenceUpdate('composing', msg.key.remoteJid);
-        await new Promise(resolve => setTimeout(resolve, typingDelay));
+        // Generate AI response with sender phone for booking context
+        const response = await aiService.generateResponse(messageContent, userId, senderPhone);
 
         // Determine if we should quote/reply to the message
         const shouldQuote = aiService.shouldReplyToMessage(messageContent);
