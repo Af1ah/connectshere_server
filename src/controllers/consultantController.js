@@ -147,9 +147,31 @@ const updateBookingStatus = async (req, res) => {
             });
         }
 
+        // Get booking details before updating
+        const bookings = await consultantService.getBookings(userId, {});
+        const booking = bookings.find(b => b.id === id);
+
+        if (!booking) {
+            return res.status(404).json({ error: 'Booking not found' });
+        }
+
         const result = await consultantService.updateBookingStatus(userId, id, status, staffNote);
 
         if (result.success) {
+            // Send WhatsApp notification
+            const notificationService = require('../services/bookingNotificationService');
+
+            if (status === 'confirmed') {
+                const notifResult = await notificationService.sendConfirmationNotification(userId, {
+                    ...booking,
+                    id
+                });
+                console.log(`Notification sent: ${notifResult.success ? 'success' : notifResult.error}`);
+            } else if (status === 'rejected') {
+                const notifResult = await notificationService.sendRejectionNotification(userId, booking, staffNote);
+                console.log(`Rejection notification: ${notifResult.success ? 'success' : notifResult.error}`);
+            }
+
             res.json({ message: `Booking ${status} successfully` });
         } else {
             res.status(500).json({ error: result.error });

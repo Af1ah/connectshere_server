@@ -18,7 +18,10 @@ app.use('/api', apiRoutes)
 // Start Services
 aiService.initialize()
 knowledgeService.initialize()
-// whatsappService.initialize() // Removed global init, now per-user
+
+// Auto-init disabled - frontend triggers connection when user opens dashboard
+// const autoInitService = require('./src/services/autoInitService')
+// autoInitService.autoInitializeUsers()
 
 const server = app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
@@ -29,11 +32,17 @@ server.on('error', (e) => {
 });
 
 process.on('uncaughtException', (err) => {
+    // Don't crash on WebSocket connection errors (common with stale WhatsApp creds)
+    if (err.message?.includes('WebSocket') || err.message?.includes('Connection Failure')) {
+        console.log('[WhatsApp] Connection error (ignored):', err.message);
+        return;
+    }
     console.error('Uncaught Exception:', err);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Log but don't crash - many are from WhatsApp library
+    console.log('Unhandled Rejection:', reason?.message || reason);
 });
 
 process.on('exit', (code) => {

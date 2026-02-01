@@ -232,6 +232,68 @@ const clearQueuedMessage = async (userId, messageId) => {
     }
 };
 
+/**
+ * Get user profile (business details)
+ */
+const getUserProfile = async (userId) => {
+    try {
+        const docRef = doc(db, 'users', userId, 'settings', 'profile');
+        const snapshot = await getDoc(docRef);
+        return snapshot.exists() ? snapshot.data() : null;
+    } catch (error) {
+        console.error('Error getting user profile:', error);
+        return null;
+    }
+};
+
+/**
+ * Update user profile
+ */
+const updateUserProfile = async (userId, profileData) => {
+    try {
+        const docRef = doc(db, 'users', userId, 'settings', 'profile');
+        await setDoc(docRef, {
+            ...profileData,
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+        return true;
+    } catch (error) {
+        console.error('Error updating user profile:', error);
+        return false;
+    }
+};
+
+/**
+ * Get onboarding status
+ */
+const getOnboardingStatus = async (userId) => {
+    try {
+        const docRef = doc(db, 'users', userId, 'settings', 'onboarding');
+        const snapshot = await getDoc(docRef);
+        return snapshot.exists() ? snapshot.data() : null;
+    } catch (error) {
+        console.error('Error getting onboarding status:', error);
+        return null;
+    }
+};
+
+/**
+ * Update onboarding status
+ */
+const updateOnboardingStatus = async (userId, statusData) => {
+    try {
+        const docRef = doc(db, 'users', userId, 'settings', 'onboarding');
+        await setDoc(docRef, {
+            ...statusData,
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+        return true;
+    } catch (error) {
+        console.error('Error updating onboarding status:', error);
+        return false;
+    }
+};
+
 module.exports = {
     saveMessage,
     getConversationHistory,
@@ -244,5 +306,10 @@ module.exports = {
     removeFileContent,
     queueMessage,
     getQueuedMessages,
-    clearQueuedMessage
+    clearQueuedMessage,
+    getUserProfile,
+    updateUserProfile,
+    getOnboardingStatus,
+    updateOnboardingStatus
 };
+

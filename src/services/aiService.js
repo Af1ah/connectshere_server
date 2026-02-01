@@ -65,36 +65,36 @@ const generateResponse = async (userMessage, userId, senderPhone = 'Unknown') =>
         const consultantSettings = await consultantService.getSettings(userId);
 
         if (consultantSettings?.enabled) {
-            const nextDates = await consultantService.getNextAvailableDates(userId, 3);
-            const datesList = nextDates.map((d, i) =>
-                `${i + 1}️⃣ ${d.dayName.charAt(0).toUpperCase() + d.dayName.slice(1)} (${d.date}) - ${d.availableSlots} slots`
-            ).join('\n');
-
             consultantInstructions = `
 
 CONSULTANT BOOKING CAPABILITY:
-You can help users book consultations. When a user naturally asks about:
+You can help users book consultations. When a user asks about:
 - booking an appointment/consultation
 - scheduling a meeting with consultant/expert/doctor
 - checking availability for consultations
 - wanting advice or professional consultation
 
-BOOKING FLOW:
-1. First understand their need - ask what they want to consult about (brief question)
-2. Once you understand, offer date options:
-   "When would you like to book?
-   ${datesList}
+BOOKING FLOW (USE INTERACTIVE BUTTONS):
+1. First understand their need briefly (1 question max)
+2. Once ready to book, respond with EXACTLY this format:
+   "Great! Let me show you available dates. [BOOKING:dates]"
    
-   Reply with the number or say 'other' for different date"
-3. After date selection, I'll show available time slots
-4. Confirm all details before finalizing
+The [BOOKING:dates] tag will trigger interactive WhatsApp buttons for:
+- Date selection (buttons)
+- Time slot selection (buttons)  
+- Confirmation (buttons)
 
-IMPORTANT RULES:
-- Don't hardcode detection - understand intent naturally from conversation
-- Keep responses SHORT (2-3 sentences max)
-- One step at a time
-- If user seems to be asking about consultation services, guide them naturally
-- Available timezone: Asia/Kolkata (IST)
+CRITICAL RULES:
+- When user wants to book, include [BOOKING:dates] at the end of your response
+- Do NOT list dates manually - the buttons will handle this
+- Keep pre-booking chat SHORT (1-2 messages max)
+- If user says "book", "appointment", "schedule" etc - trigger booking quickly
+- Timezone: Asia/Kolkata (IST)
+
+EXAMPLE RESPONSES:
+✅ "Sure! What would you like to consult about?"
+✅ "Got it! Let me show you available slots. [BOOKING:dates]"
+❌ "Here are the dates: 1. Monday, 2. Tuesday..." (DON'T DO THIS)
 `;
         }
     } catch (error) {

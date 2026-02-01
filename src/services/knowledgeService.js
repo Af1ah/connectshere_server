@@ -4,6 +4,8 @@
  */
 const admin = require('firebase-admin');
 const embeddingService = require('./embeddingService');
+const path = require('path');
+const fs = require('fs');
 
 let adminDb = null;
 
@@ -11,22 +13,43 @@ let adminDb = null;
  * Initialize Firebase Admin for server-side vector operations
  */
 const initialize = () => {
-    if (!admin.apps.length) {
-        // Initialize with credentials from environment
-        const serviceAccount = {
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-        };
+    if (adminDb) return; // Already initialized
 
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount)
-        });
+    try {
+        if (!admin.apps.length) {
+            // Try to load service account from JSON file first
+            const serviceAccountPath = path.join(process.cwd(), 'alex-agent-b2eb1-firebase-adminsdk-fbsvc-967a1bfb30.json');
+
+            if (fs.existsSync(serviceAccountPath)) {
+                const serviceAccount = require(serviceAccountPath);
+                admin.initializeApp({
+                    credential: admin.credential.cert(serviceAccount)
+                });
+                console.log('✅ Firebase Admin initialized with service account file');
+            } else if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+                // Fallback to environment variables
+                const serviceAccount = {
+                    projectId: process.env.FIREBASE_PROJECT_ID,
+                    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+                };
+                admin.initializeApp({
+                    credential: admin.credential.cert(serviceAccount)
+                });
+                console.log('✅ Firebase Admin initialized with env variables');
+            } else {
+                console.warn('⚠️ Knowledge service: No Firebase Admin credentials found. RAG disabled.');
+                return;
+            }
+        }
+
+        adminDb = admin.firestore();
+        embeddingService.initialize();
+    } catch (error) {
+        console.error('❌ Failed to initialize Firebase Admin:', error.message);
     }
-
-    adminDb = admin.firestore();
-    embeddingService.initialize();
 };
+
 
 /**
  * Add knowledge entry to user's knowledge base

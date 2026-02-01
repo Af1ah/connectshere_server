@@ -7,23 +7,25 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "GOOGLE_APPLICATION_CREDENTIALS=./alex-agent-b2eb1-firebase-adminsdk-fbsvc-967a1bfb30.json node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
-    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "@rexxhayanasi/elaina-baileys": "^1.2.9",
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "firebase": "^12.6.0",
     "firebase-admin": "^13.6.0",
     "form-data": "^4.0.5",
+    "jimp": "^0.22.12",
     "mammoth": "^1.11.0",
     "mime": "^4.1.0",
     "multer": "^2.0.2",
     "pdf-parse": "^2.4.5",
     "pino": "^10.1.0",
+    "qrcode": "^1.5.4",
     "xlsx": "^0.18.5"
   }
 }

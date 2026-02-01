@@ -29,6 +29,7 @@ router.use(verifyToken);
 router.get('/qr', whatsappController.getQR);
 router.get('/status', whatsappController.getStatus);
 router.post('/disconnect', whatsappController.disconnect);
+router.post('/test-buttons', whatsappController.sendTestButtons);
 router.delete('/credentials', whatsappController.clearCredentials);
 router.get('/dashboard/stats', dashboardController.getDashboardStats);
 
@@ -55,8 +56,12 @@ router.post('/consultant/bookings', consultantController.createBooking);
 router.get('/consultant/bookings', consultantController.getBookings);
 router.put('/consultant/bookings/:id/status', consultantController.updateBookingStatus);
 
-// Config Routes (Moved up to be public)
-// router.get('/config/firebase', ... ); 
+// User Profile & Onboarding Routes
+const userController = require('../controllers/userController');
+router.get('/user/profile', userController.getProfile);
+router.post('/user/profile', userController.updateProfile);
+router.get('/user/onboarding', userController.getOnboardingStatus);
+router.post('/user/onboarding', userController.updateOnboardingStatus);
 
 module.exports = router;
 

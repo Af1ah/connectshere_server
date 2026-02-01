@@ -65,9 +65,28 @@ const clearCredentials = async (req, res) => {
     }
 }
 
+const sendTestButtons = async (req, res) => {
+    const userId = req.user.uid;
+    const { phone } = req.body;
+
+    if (!phone) {
+        return res.status(400).json({ success: false, error: 'Phone number required' });
+    }
+
+    try {
+        console.log(`[${new Date().toISOString()}] 🔘 /api/test-buttons - Sending to: ${phone}`);
+        await whatsappService.sendTestButtons(userId, phone);
+        res.json({ success: true, message: 'Test buttons sent' });
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] ❌ /api/test-buttons - Error:`, error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
 module.exports = {
     getQR,
     getStatus,
     disconnect,
-    clearCredentials
+    clearCredentials,
+    sendTestButtons
 }
