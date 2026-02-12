@@ -5,9 +5,14 @@
 const { GoogleGenAI } = require('@google/genai');
 
 let ai = null;
-const EMBEDDING_MODEL = 'text-embedding-004';
+const EMBEDDING_MODELS = (process.env.GEMINI_EMBEDDING_MODELS || 'gemini-embedding-001,text-embedding-004')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
 const CHUNK_SIZE = 800; // Characters per chunk
 const CHUNK_OVERLAP = 100; // Overlap between chunks
+const EMBEDDING_RETRIES = 3;
+const RETRY_DELAY_MS = 500;
 
 /**
  * Initialize the embedding service
@@ -30,17 +35,57 @@ const generateEmbedding = async (text) => {
         throw new Error('Embedding service not initialized');
     }
 
-    try {
-        const result = await ai.models.embedContent({
-            model: EMBEDDING_MODEL,
-            contents: text,
-        });
+    let lastError = null;
 
-        return result.embeddings[0].values;
-    } catch (error) {
-        console.error('Error generating embedding:', error);
-        throw error;
+    for (const model of EMBEDDING_MODELS) {
+        try {
+            const result = await ai.models.embedContent({
+                model,
+                contents: text,
+            });
+
+            const values = result?.embeddings?.[0]?.values || result?.embedding?.values;
+            if (!Array.isArray(values)) {
+                throw new Error(`Embedding response from model "${model}" had no vector values`);
+            }
+
+            return values;
+        } catch (error) {
+            lastError = error;
+            const isModelNotFound = error?.status === 404 || String(error?.message || '').includes('NOT_FOUND');
+
+            if (isModelNotFound) {
+                continue;
+            }
+
+            console.error('Error generating embedding:', error);
+            throw error;
+        }
     }
+
+    console.error('Error generating embedding: no configured embedding model is available', {
+        attemptedModels: EMBEDDING_MODELS
+    });
+    throw lastError || new Error('No valid embedding model available');
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const generateEmbeddingWithRetry = async (text, retries = EMBEDDING_RETRIES) => {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            return await generateEmbedding(text);
+        } catch (error) {
+            lastError = error;
+            if (attempt < retries) {
+                await sleep(RETRY_DELAY_MS * attempt);
+            }
+        }
+    }
+
+    throw lastError || new Error('Failed to generate embedding');
 };
 
 /**
@@ -96,10 +141,11 @@ const chunkText = (text, source = 'unknown') => {
 const processText = async (text, source = 'user_input') => {
     const chunks = chunkText(text, source);
     const processedChunks = [];
+    let failedChunks = 0;
 
     for (const chunk of chunks) {
         try {
-            const embedding = await generateEmbedding(chunk.content);
+            const embedding = await generateEmbeddingWithRetry(chunk.content);
             processedChunks.push({
                 ...chunk,
                 embedding,
@@ -107,7 +153,16 @@ const processText = async (text, source = 'user_input') => {
             });
         } catch (error) {
             console.error(`Failed to embed chunk ${chunk.index}:`, error);
+            failedChunks++;
         }
+    }
+
+    if (processedChunks.length === 0) {
+        throw new Error('Failed to generate embeddings for all chunks');
+    }
+
+    if (failedChunks > 0) {
+        console.warn(`Embedding partially failed: ${failedChunks} chunks skipped from source "${source}"`);
     }
 
     return processedChunks;
@@ -138,6 +193,7 @@ const cosineSimilarity = (a, b) => {
 module.exports = {
     initialize,
     generateEmbedding,
+    generateEmbeddingWithRetry,
     chunkText,
     processText,
     cosineSimilarity,

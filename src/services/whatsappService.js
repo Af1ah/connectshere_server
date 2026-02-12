@@ -7,6 +7,9 @@ const pino = require('pino');
 
 const sessions = new Map(); // userId -> { sock, qr, status, retryCount }
 
+const getConversationKey = (senderPhone) => `wa_${String(senderPhone || 'unknown').replace(/[^0-9a-zA-Z_-]/g, '')}`;
+const getBookingKey = (userId, senderPhone) => `${userId}::${getConversationKey(senderPhone)}`;
+
 /**
  * Send a message with interactive buttons
  */
@@ -107,21 +110,21 @@ const sendConfirmationButtons = async (sock, jid, phone, date, timeSlot, reason,
 /**
  * Handle booking button interactions
  */
-const handleBookingButton = async (sock, jid, userId, phone, buttonId) => {
+const handleBookingButton = async (sock, jid, userId, bookingKey, phone, buttonId) => {
     const action = bookingState.parseButtonAction(buttonId);
     if (!action) return false;
 
     const consultantService = require('./consultantService');
-    const state = bookingState.getState(phone);
+    const state = bookingState.getState(bookingKey);
 
     switch (action.type) {
         case 'date':
-            bookingState.setDate(phone, action.value);
+            bookingState.setDate(bookingKey, action.value);
             await sendTimeSlotButtons(sock, jid, userId, action.value);
             return true;
 
         case 'slot':
-            bookingState.setTimeSlot(phone, action.value);
+            bookingState.setTimeSlot(bookingKey, action.value);
             // Ask for name instead of showing confirmation
             await sock.sendMessage(jid, {
                 text: '👤 *Please enter your name:*\n\n_Just type your name to continue..._'
@@ -129,11 +132,19 @@ const handleBookingButton = async (sock, jid, userId, phone, buttonId) => {
             return true;
 
         case 'confirm':
-            const currentState = bookingState.getState(phone);
+            const currentState = bookingState.getState(bookingKey);
+            if (!currentState.name) {
+                await sock.sendMessage(jid, { text: '👤 Please share your name first.' });
+                return true;
+            }
+            if (!currentState.reason) {
+                await sock.sendMessage(jid, { text: '📝 Please share the reason for consultation first.' });
+                return true;
+            }
             const result = await consultantService.createBooking(userId, {
                 phone,
                 name: currentState.name || 'WhatsApp Customer',
-                reason: currentState.reason || 'General consultation',
+                reason: currentState.reason,
                 date: currentState.date,
                 timeSlot: currentState.timeSlot
             });
@@ -145,11 +156,11 @@ const handleBookingButton = async (sock, jid, userId, phone, buttonId) => {
             } else {
                 await sock.sendMessage(jid, { text: `❌ ${result.error}` });
             }
-            bookingState.clearState(phone);
+            bookingState.clearState(bookingKey);
             return true;
 
         case 'cancel':
-            bookingState.clearState(phone);
+            bookingState.clearState(bookingKey);
             await sock.sendMessage(jid, { text: "Booking cancelled. Let me know if you need anything else!" });
             return true;
     }
@@ -160,13 +171,37 @@ const handleBookingButton = async (sock, jid, userId, phone, buttonId) => {
 /**
  * Handle text input during booking flow (e.g., name entry)
  */
-const handleBookingTextInput = async (sock, jid, userId, phone, text) => {
-    const state = bookingState.getState(phone);
+const handleBookingTextInput = async (sock, jid, userId, bookingKey, phone, text) => {
+    const state = bookingState.getState(bookingKey);
+
+    if (state.step === bookingState.BOOKING_STEPS.AWAITING_REASON) {
+        const reason = text.trim();
+        if (reason.length < 3) {
+            await sock.sendMessage(jid, { text: '📝 Please provide a short reason (at least 3 characters).' });
+            return true;
+        }
+        bookingState.setState(bookingKey, {
+            step: bookingState.BOOKING_STEPS.AWAITING_DATE,
+            reason
+        });
+        await sendDateButtons(sock, jid, userId);
+        return true;
+    }
 
     if (state.step === bookingState.BOOKING_STEPS.AWAITING_NAME) {
         // User entered their name
-        bookingState.setName(phone, text.trim());
-        const updatedState = bookingState.getState(phone);
+        bookingState.setName(bookingKey, text.trim());
+        const updatedState = bookingState.getState(bookingKey);
+
+        if (!updatedState.reason) {
+            bookingState.setState(bookingKey, {
+                step: bookingState.BOOKING_STEPS.AWAITING_REASON
+            });
+            await sock.sendMessage(jid, {
+                text: '📝 *Please share reason for consultation:*'
+            });
+            return true;
+        }
 
         // Show confirmation with name
         await sendConfirmationButtons(sock, jid, phone, updatedState.date, updatedState.timeSlot, updatedState.reason, updatedState.name);
@@ -195,6 +230,7 @@ const processMessage = async (sock, msg, userId) => {
 
         // Extract sender's phone number
         let senderPhone = 'Unknown';
+        const senderName = msg.pushName || msg.message?.extendedTextMessage?.contextInfo?.participant || null;
         const remoteJid = msg.key.remoteJid || '';
 
         if (msg.key.participant) {
@@ -207,9 +243,12 @@ const processMessage = async (sock, msg, userId) => {
             senderPhone = remoteJid.split('@')[0];
         }
 
+        const conversationKey = getConversationKey(senderPhone);
+        const bookingKey = getBookingKey(userId, senderPhone);
+
         // Check if this is a booking button response
         if (bookingState.isBookingAction(messageContent)) {
-            const handled = await handleBookingButton(sock, remoteJid, userId, senderPhone, messageContent);
+            const handled = await handleBookingButton(sock, remoteJid, userId, bookingKey, senderPhone, messageContent);
             if (handled) {
                 await sock.sendPresenceUpdate('paused', remoteJid);
                 return;
@@ -217,14 +256,14 @@ const processMessage = async (sock, msg, userId) => {
         }
 
         // Check if user is in a booking flow and typing text (e.g., name)
-        const textHandled = await handleBookingTextInput(sock, remoteJid, userId, senderPhone, messageContent);
+        const textHandled = await handleBookingTextInput(sock, remoteJid, userId, bookingKey, senderPhone, messageContent);
         if (textHandled) {
             await sock.sendPresenceUpdate('paused', remoteJid);
             return;
         }
 
         // Generate AI response
-        const response = await aiService.generateResponse(messageContent, userId, senderPhone);
+        const response = await aiService.generateResponse(messageContent, userId, senderPhone, senderName, conversationKey);
 
         // Check for booking trigger in AI response
         // Format: [BOOKING:start] or [BOOKING:dates]
@@ -240,8 +279,10 @@ const processMessage = async (sock, msg, userId) => {
 
             if (action === 'dates') {
                 // Start booking flow with date selection
-                bookingState.startBooking(senderPhone, 'General consultation');
-                await sendDateButtons(sock, remoteJid, userId);
+                bookingState.startBooking(bookingKey, null);
+                await sock.sendMessage(remoteJid, {
+                    text: '📝 *What is the reason for consultation?*'
+                });
             }
 
             await sock.sendPresenceUpdate('paused', remoteJid);
@@ -297,6 +338,13 @@ const processQueuedMessages = async (userId) => {
     }
 };
 
+const clearReconnectTimer = (session) => {
+    if (session && session.reconnectTimer) {
+        clearTimeout(session.reconnectTimer);
+        session.reconnectTimer = null;
+    }
+};
+
 const initialize = async (userId) => {
     const session = sessions.get(userId);
     if (session && ['connected', 'connecting', 'scanning'].includes(session.status)) {
@@ -313,13 +361,21 @@ const initialize = async (userId) => {
     });
 
     // Initialize session state
-    sessions.set(userId, { sock, qr: null, status: 'connecting', retryCount: 0 });
+    sessions.set(userId, {
+        sock,
+        qr: null,
+        status: 'connecting',
+        retryCount: 0,
+        manualDisconnect: false,
+        reconnectTimer: null
+    });
 
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         const session = sessions.get(userId);
+        if (!session) return;
 
         if (qr) {
             session.qr = qr;
@@ -329,7 +385,10 @@ const initialize = async (userId) => {
 
         if (connection === 'close') {
             const statusCode = (lastDisconnect.error)?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 408;
+            const shouldReconnect =
+                !session.manualDisconnect &&
+                statusCode !== DisconnectReason.loggedOut &&
+                statusCode !== 408;
 
             console.log(`User ${userId}: connection closed due to `, lastDisconnect.error, ', reconnecting ', shouldReconnect);
 
@@ -338,10 +397,19 @@ const initialize = async (userId) => {
             sessions.set(userId, session);
 
             if (shouldReconnect) {
-                setTimeout(() => {
+                clearReconnectTimer(session);
+                session.reconnectTimer = setTimeout(() => {
+                    const latest = sessions.get(userId);
+                    if (latest) {
+                        latest.reconnectTimer = null;
+                        latest.manualDisconnect = false;
+                        sessions.set(userId, latest);
+                    }
                     initialize(userId);
                 }, 5000);
+                sessions.set(userId, session);
             } else {
+                clearReconnectTimer(session);
                 if (statusCode === 408) {
                     console.log(`User ${userId}: QR scan timed out. Please try again.`);
                 }
@@ -389,6 +457,9 @@ const disconnect = async (userId) => {
     const session = sessions.get(userId);
     if (session && session.sock) {
         try {
+            session.manualDisconnect = true;
+            clearReconnectTimer(session);
+            sessions.set(userId, session);
             session.sock.end();
             console.log(`User ${userId}: WhatsApp connection closed`);
         } catch (error) {

@@ -6,8 +6,74 @@ const admin = require('firebase-admin');
 const embeddingService = require('./embeddingService');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 let adminDb = null;
+const BATCH_WRITE_LIMIT = 400;
+let isCredentialFailureDisabled = false;
+
+const resolveExistingCredentialPath = () => {
+    const explicitCredPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    const defaultServiceAccountPath = path.join(process.cwd(), 'alex-agent-b2eb1-firebase-adminsdk-fbsvc-967a1bfb30.json');
+    const localServiceAccountPath = path.join(__dirname, '..', '..', 'alex-agent-b2eb1-firebase-adminsdk-fbsvc-967a1bfb30.json');
+
+    if (explicitCredPath) {
+        const resolvedExplicitPath = path.isAbsolute(explicitCredPath)
+            ? explicitCredPath
+            : path.resolve(process.cwd(), explicitCredPath);
+
+        if (fs.existsSync(resolvedExplicitPath)) {
+            return resolvedExplicitPath;
+        }
+
+        console.warn(`⚠️ GOOGLE_APPLICATION_CREDENTIALS file not found: ${resolvedExplicitPath}. Falling back to other Firebase credentials.`);
+        delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    }
+
+    if (fs.existsSync(defaultServiceAccountPath)) {
+        return defaultServiceAccountPath;
+    }
+
+    if (fs.existsSync(localServiceAccountPath)) {
+        return localServiceAccountPath;
+    }
+
+    return null;
+};
+
+const getServiceAccountFromEnv = () => {
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || process.env.FIREBASE_ADMIN_CLIENT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL;
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY || process.env.FIREBASE_ADMIN_PRIVATE_KEY;
+    const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
+
+    if (!clientEmail || !privateKey || !projectId) {
+        return null;
+    }
+
+    return {
+        projectId,
+        clientEmail,
+        privateKey: privateKey.replace(/\\n/g, '\n')
+    };
+};
+
+const isCredentialError = (error) => {
+    const message = String(error?.message || '');
+    return (
+        error?.code === 'ENOENT' ||
+        message.includes('Could not load the default credentials') ||
+        message.includes('GOOGLE_APPLICATION_CREDENTIALS') ||
+        message.includes('The file at')
+    );
+};
+
+const disableRagOnCredentialFailure = (error) => {
+    adminDb = null;
+    if (!isCredentialFailureDisabled) {
+        isCredentialFailureDisabled = true;
+        console.warn(`⚠️ Disabling RAG knowledge service due to credential error: ${error?.message || 'unknown error'}`);
+    }
+};
 
 /**
  * Initialize Firebase Admin for server-side vector operations
@@ -17,36 +83,56 @@ const initialize = () => {
 
     try {
         if (!admin.apps.length) {
-            // Try to load service account from JSON file first
-            const serviceAccountPath = path.join(process.cwd(), 'alex-agent-b2eb1-firebase-adminsdk-fbsvc-967a1bfb30.json');
+            const serviceAccountPath = resolveExistingCredentialPath();
+            const serviceAccountFromEnv = getServiceAccountFromEnv();
 
-            if (fs.existsSync(serviceAccountPath)) {
+            if (serviceAccountPath) {
                 const serviceAccount = require(serviceAccountPath);
                 admin.initializeApp({
                     credential: admin.credential.cert(serviceAccount)
                 });
                 console.log('✅ Firebase Admin initialized with service account file');
-            } else if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-                // Fallback to environment variables
-                const serviceAccount = {
-                    projectId: process.env.FIREBASE_PROJECT_ID,
-                    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-                };
+            } else if (serviceAccountFromEnv) {
                 admin.initializeApp({
-                    credential: admin.credential.cert(serviceAccount)
+                    credential: admin.credential.cert(serviceAccountFromEnv)
                 });
                 console.log('✅ Firebase Admin initialized with env variables');
             } else {
-                console.warn('⚠️ Knowledge service: No Firebase Admin credentials found. RAG disabled.');
-                return;
+                admin.initializeApp({
+                    credential: admin.credential.applicationDefault(),
+                    projectId: process.env.FIREBASE_PROJECT_ID
+                });
+                console.log('✅ Firebase Admin initialized with application default credentials');
             }
         }
 
         adminDb = admin.firestore();
+        adminDb.settings({ ignoreUndefinedProperties: true });
         embeddingService.initialize();
     } catch (error) {
         console.error('❌ Failed to initialize Firebase Admin:', error.message);
+    }
+};
+
+const getChunkDocId = (source, index, content) => {
+    const hash = crypto.createHash('sha1').update(content).digest('hex').slice(0, 10);
+    return `${encodeURIComponent(source)}__${index}__${hash}`;
+};
+
+const commitChunkedWrites = async (operations) => {
+    if (!operations.length) return;
+
+    for (let i = 0; i < operations.length; i += BATCH_WRITE_LIMIT) {
+        const batch = adminDb.batch();
+        const chunk = operations.slice(i, i + BATCH_WRITE_LIMIT);
+        for (const op of chunk) {
+            if (op.type === 'set') {
+                batch.set(op.ref, op.data, op.options);
+            } else if (op.type === 'delete') {
+                batch.delete(op.ref);
+            }
+        }
+        await batch.commit();
     }
 };
 
@@ -61,33 +147,58 @@ const initialize = () => {
  */
 const addKnowledge = async (userId, content, source = 'manual', category = 'general') => {
     if (!adminDb) {
-        throw new Error('Knowledge service not initialized');
+        return { success: false, error: 'Knowledge service not initialized' };
     }
 
     try {
         // Process text into embedded chunks
         const chunks = await embeddingService.processText(content, source);
 
-        // Store each chunk in Firestore
-        const batch = adminDb.batch();
         const knowledgeRef = adminDb.collection('users').doc(userId).collection('knowledge');
+        const sourceRef = adminDb.collection('users').doc(userId).collection('knowledge_sources').doc(encodeURIComponent(source));
+        const writes = [];
 
+        let upsertedChunks = 0;
         for (const chunk of chunks) {
-            const docRef = knowledgeRef.doc();
-            batch.set(docRef, {
+            const docRef = knowledgeRef.doc(getChunkDocId(source, chunk.index, chunk.content));
+            writes.push({
+                type: 'set',
+                ref: docRef,
+                options: { merge: true },
+                data: {
                 content: chunk.content,
                 source: chunk.source,
                 category,
                 index: chunk.index,
                 embedding: admin.firestore.FieldValue.vector(chunk.embedding),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
+                }
             });
+            upsertedChunks++;
         }
 
-        await batch.commit();
+        writes.push({
+            type: 'set',
+            ref: sourceRef,
+            options: { merge: true },
+            data: {
+                source,
+                category,
+                chunks: upsertedChunks,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            }
+        });
 
-        return { success: true, chunksAdded: chunks.length };
+        await commitChunkedWrites(writes);
+
+        return { success: true, chunksAdded: upsertedChunks };
     } catch (error) {
+        if (isCredentialError(error)) {
+            disableRagOnCredentialFailure(error);
+            return { success: false, error: 'Knowledge service credentials are not configured' };
+        }
         console.error('Error adding knowledge:', error);
         return { success: false, error: error.message };
     }
@@ -102,7 +213,7 @@ const addKnowledge = async (userId, content, source = 'manual', category = 'gene
  */
 const searchKnowledge = async (userId, query, limit = 5) => {
     if (!adminDb) {
-        throw new Error('Knowledge service not initialized');
+        return [];
     }
 
     try {
@@ -133,6 +244,10 @@ const searchKnowledge = async (userId, query, limit = 5) => {
 
         return relevantChunks;
     } catch (error) {
+        if (isCredentialError(error)) {
+            disableRagOnCredentialFailure(error);
+            return [];
+        }
         console.error('Error searching knowledge:', error);
         return [];
     }
@@ -145,33 +260,29 @@ const searchKnowledge = async (userId, query, limit = 5) => {
  */
 const listKnowledge = async (userId) => {
     if (!adminDb) {
-        throw new Error('Knowledge service not initialized');
+        return [];
     }
 
     try {
-        const knowledgeRef = adminDb.collection('users').doc(userId).collection('knowledge');
-        const snapshot = await knowledgeRef.orderBy('createdAt', 'desc').get();
+        const sourcesRef = adminDb.collection('users').doc(userId).collection('knowledge_sources');
+        const snapshot = await sourcesRef.orderBy('updatedAt', 'desc').get();
 
         const entries = [];
-        const sources = new Map();
-
         snapshot.forEach(doc => {
             const data = doc.data();
-            // Group by source
-            if (!sources.has(data.source)) {
-                sources.set(data.source, {
-                    source: data.source,
-                    category: data.category,
-                    chunks: 0,
-                    firstChunkId: doc.id
-                });
-            }
-            sources.get(data.source).chunks++;
+            entries.push({
+                source: data.source || decodeURIComponent(doc.id),
+                category: data.category || 'general',
+                chunks: data.chunks || 0,
+                updatedAt: data.updatedAt || null
+            });
         });
-
-        sources.forEach(value => entries.push(value));
         return entries;
     } catch (error) {
+        if (isCredentialError(error)) {
+            disableRagOnCredentialFailure(error);
+            return [];
+        }
         console.error('Error listing knowledge:', error);
         return [];
     }
@@ -185,21 +296,28 @@ const listKnowledge = async (userId) => {
  */
 const deleteKnowledgeBySource = async (userId, source) => {
     if (!adminDb) {
-        throw new Error('Knowledge service not initialized');
+        return false;
     }
 
     try {
         const knowledgeRef = adminDb.collection('users').doc(userId).collection('knowledge');
         const snapshot = await knowledgeRef.where('source', '==', source).get();
 
-        const batch = adminDb.batch();
+        const writes = [];
         snapshot.forEach(doc => {
-            batch.delete(doc.ref);
+            writes.push({ type: 'delete', ref: doc.ref });
         });
 
-        await batch.commit();
+        const sourceRef = adminDb.collection('users').doc(userId).collection('knowledge_sources').doc(encodeURIComponent(source));
+        writes.push({ type: 'delete', ref: sourceRef });
+
+        await commitChunkedWrites(writes);
         return true;
     } catch (error) {
+        if (isCredentialError(error)) {
+            disableRagOnCredentialFailure(error);
+            return false;
+        }
         console.error('Error deleting knowledge:', error);
         return false;
     }

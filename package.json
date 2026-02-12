@@ -7,7 +7,7 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "GOOGLE_APPLICATION_CREDENTIALS=./alex-agent-b2eb1-firebase-adminsdk-fbsvc-967a1bfb30.json node index.js",
+    "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {

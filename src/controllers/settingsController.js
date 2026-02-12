@@ -9,11 +9,11 @@ const getSettings = async (req, res) => {
 
         // Define the allowed models for all users
         const availableModels = [
+            'gemini-3-flash-preview',
             'gemini-2.5-flash',
             'gemini-2.5-flash-lite',
             'gemini-2.0-flash',
-            'gemini-2.0-flash-lite',
-            'gemini-3-flash-preview'
+            'gemini-2.0-flash-lite'
         ];
 
         if (settings) {
@@ -25,7 +25,7 @@ const getSettings = async (req, res) => {
             // Return default settings if not found
             res.json({
                 availableModels,
-                model: 'gemini-2.0-flash',
+                model: 'gemini-3-flash-preview',
                 context: ''
             });
         }
@@ -43,7 +43,7 @@ const updateSettings = async (req, res) => {
         // Allow empty context for RAG-only mode
         const success = await firebaseService.updateAISettings(userId, {
             context: context || '',
-            model: model || 'gemini-2.0-flash'
+            model: model || 'gemini-3-flash-preview'
         });
 
         if (success) {

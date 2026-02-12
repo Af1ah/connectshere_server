@@ -4,556 +4,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Settings - ConnectSphere</title>
-    <link rel="stylesheet" href="style.css">
-    <style>
-        .settings-form {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            max-width: 900px;
-            margin: 0 auto;
-        }
-
-        .form-group {
-            margin-bottom: 24px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
-            color: #2c3e50;
-        }
-
-        .label-description {
-            font-weight: normal;
-            font-size: 0.85em;
-            color: #7f8c8d;
-            margin-left: 8px;
-        }
-
-        select,
-        textarea,
-        input[type="text"] {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
-            box-sizing: border-box;
-        }
-
-        textarea {
-            height: 150px;
-            font-family: monospace;
-        }
-
-        .textarea-small {
-            height: 120px;
-        }
-
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.2s;
-        }
-
-        .btn-primary {
-            background-color: #3498db;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background-color: #2980b9;
-        }
-
-        .btn-success {
-            background-color: #27ae60;
-            color: white;
-        }
-
-        .btn-success:hover {
-            background-color: #219a52;
-        }
-
-        .btn-danger {
-            background-color: #e74c3c;
-            color: white;
-            padding: 6px 12px;
-            font-size: 14px;
-        }
-
-        .btn-danger:hover {
-            background-color: #c0392b;
-        }
-
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        .back-link {
-            display: block;
-            margin-bottom: 20px;
-            color: #3498db;
-            text-decoration: none;
-        }
-
-        .message {
-            padding: 10px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-            display: none;
-        }
-
-        .success {
-            background-color: #d4edda;
-            color: #155724;
-        }
-
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-
-        .section-title {
-            font-size: 1.2em;
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 8px;
-            margin-bottom: 16px;
-        }
-
-        .knowledge-list {
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        .knowledge-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .knowledge-item:last-child {
-            border-bottom: none;
-        }
-
-        .knowledge-info {
-            flex: 1;
-        }
-
-        .knowledge-source {
-            font-weight: bold;
-            color: #2c3e50;
-        }
-
-        .knowledge-meta {
-            font-size: 0.85em;
-            color: #7f8c8d;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #7f8c8d;
-        }
-
-        .input-row {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .input-row input[type="text"] {
-            flex: 1;
-        }
-
-        .category-select {
-            width: 150px;
-        }
-
-        .tabs {
-            display: flex;
-            border-bottom: 2px solid #ddd;
-            margin-bottom: 20px;
-        }
-
-        .tab {
-            padding: 10px 20px;
-            cursor: pointer;
-            border: none;
-            background: none;
-            font-size: 16px;
-            color: #7f8c8d;
-            border-bottom: 2px solid transparent;
-            margin-bottom: -2px;
-        }
-
-        .tab.active {
-            color: #3498db;
-            border-bottom-color: #3498db;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-    </style>
+    <title>AI Console - ConnectSphere</title>
+    <link rel="stylesheet" href="app.css">
 </head>
 
-<body>
-    <div class="container">
-        <a href="/" class="back-link">← Back to Dashboard</a>
-        <h1>AI Configuration</h1>
-
-        <div id="message" class="message"></div>
-
-        <div class="settings-form">
-            <!-- Model Selection -->
-            <div class="form-group">
-                <label for="modelSelect">AI Model</label>
-                <select id="modelSelect">
-                    <option value="" disabled selected>Loading models...</option>
-                </select>
+<body style="visibility:hidden">
+    <div class="app">
+        <aside class="sidebar" style="display:flex;flex-direction:column;gap:10px">
+            <a class="brand" href="/">Connect<span>Sphere</span></a>
+            <nav class="nav">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="ai.html">AI Console</a>
+                <a href="consultant-test.html">Consultant</a>
+                <a href="api-docs.html">API Docs</a>
+            </nav>
+            <div class="sidebar-user">
+                <div data-user-name>User</div>
+                <div data-user-role class="muted">-</div>
             </div>
+        </aside>
 
-            <!-- Base Context (Optional) -->
-            <div class="form-group">
-                <label for="contextInput">
-                    Base Instructions
-                    <span class="label-description">(Optional - for custom AI behavior)</span>
-                </label>
-                <textarea id="contextInput" class="textarea-small"
-                    placeholder="Enter base system instructions (optional)..."></textarea>
-            </div>
-
-            <button class="btn btn-primary" style="width: 100%; margin-bottom: 30px;" onclick="saveSettings()">Save
-                Settings</button>
-
-            <!-- Knowledge Base Section -->
-            <h3 class="section-title">📚 Knowledge Base (RAG Training)</h3>
-
-            <div class="tabs">
-                <button class="tab active" onclick="switchTab('text')">Add Text</button>
-                <button class="tab" onclick="switchTab('file')">Upload File</button>
-            </div>
-
-            <!-- Text Input Tab -->
-            <div id="tab-text" class="tab-content active">
-                <div class="form-group">
-                    <div class="input-row">
-                        <input type="text" id="knowledgeSource" placeholder="Source name (e.g., FAQ, Product Info)">
-                        <select id="knowledgeCategory" class="category-select">
-                            <option value="general">General</option>
-                            <option value="product">Product</option>
-                            <option value="faq">FAQ</option>
-                            <option value="policy">Policy</option>
-                            <option value="service">Service</option>
-                        </select>
-                    </div>
-                    <textarea id="knowledgeContent"
-                        placeholder="Enter knowledge content to train the AI...&#10;&#10;Example:&#10;Our business hours are Monday to Friday, 9 AM to 6 PM.&#10;We offer free shipping on orders over $50."></textarea>
-                    <button class="btn btn-success" style="width: 100%; margin-top: 10px;" onclick="addKnowledge()">
-                        ➕ Add to Knowledge Base
-                    </button>
+        <main class="main">
+            <header class="topbar">
+                <div>
+                    <h1 class="page-title">AI Console</h1>
+                    <p class="page-subtitle">Knowledge-base first tuning for WhatsApp chatbot operations.</p>
                 </div>
-            </div>
-
-            <!-- File Upload Tab -->
-            <div id="tab-file" class="tab-content">
-                <div class="form-group">
-                    <p style="color: #7f8c8d; margin-bottom: 10px;">Upload documents (PDF, DOCX, XLSX, CSV) to train the
-                        AI</p>
-                    <div class="input-row">
-                        <input type="file" id="fileInput" accept=".pdf,.docx,.xlsx,.csv">
-                        <button class="btn btn-success" onclick="uploadFile()">Upload & Train</button>
-                    </div>
+                <div class="actions">
+                    <button id="themeToggle">Dark</button>
+                    <button id="logoutBtn" class="danger">Logout</button>
                 </div>
-            </div>
+            </header>
 
-            <!-- Knowledge Entries List -->
-            <div class="form-group">
-                <label>Trained Knowledge</label>
-                <div id="knowledgeList" class="knowledge-list">
-                    <div class="empty-state">Loading knowledge base...</div>
+            <div id="message" class="message"></div>
+
+            <section class="grid two">
+                <article class="card">
+                    <h2>Runtime</h2>
+                    <p class="muted">Select model and response behavior. Facts should come from knowledge sources.</p>
+
+                    <label for="modelSelect">Gemini Model</label>
+                    <select id="modelSelect"></select>
+
+                    <label for="contextInput">Assistant Behavior Brief (optional)</label>
+                    <textarea id="contextInput"
+                        placeholder="Tone, response style, brand voice. Avoid storing policies here."></textarea>
+
+                    <button id="saveBtn" class="primary">Save Runtime Settings</button>
+                </article>
+
+                <article class="card">
+                    <h2>Knowledge Base</h2>
+                    <p class="muted">Upload documents and structured text. This is your source of truth for RAG.</p>
+
+                    <label for="knowledgeSource">Source Name</label>
+                    <input id="knowledgeSource" type="text" placeholder="e.g. Pricing-Feb-2026">
+
+                    <label for="knowledgeCategory">Category</label>
+                    <select id="knowledgeCategory">
+                        <option value="general">general</option>
+                        <option value="product">product</option>
+                        <option value="faq">faq</option>
+                        <option value="policy">policy</option>
+                        <option value="service">service</option>
+                    </select>
+
+                    <label for="knowledgeContent">Knowledge Text</label>
+                    <textarea id="knowledgeContent" placeholder="Paste policies, FAQs, offers, scripts, and SOPs."></textarea>
+                    <button id="addKnowledgeBtn" class="primary">Add Text Knowledge</button>
+
+                    <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+
+                    <label for="fileInput">Train From File</label>
+                    <input id="fileInput" type="file" accept=".pdf,.docx,.xlsx,.csv">
+                    <button id="uploadBtn">Upload and Train</button>
+                </article>
+            </section>
+
+            <section class="card" style="margin-top:16px">
+                <h3>Stored Sources</h3>
+                <div id="knowledgeList" class="list">
+                    <div class="muted">Loading knowledge sources...</div>
                 </div>
-            </div>
-        </div>
+            </section>
+        </main>
     </div>
 
-    <script type="module">
-        import { checkAuth, getToken } from './auth.js';
-
-        checkAuth((user) => {
-            console.log("Logged in as:", user.email);
-            window.currentUser = user;
-            loadSettings();
-            loadKnowledge();
-        });
-
-        // Expose functions to global scope
-        window.saveSettings = saveSettings;
-        window.addKnowledge = addKnowledge;
-        window.uploadFile = uploadFile;
-        window.deleteKnowledge = deleteKnowledge;
-        window.switchTab = switchTab;
-
-        function switchTab(tabName) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-            document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
-            document.getElementById(`tab-${tabName}`).classList.add('active');
-        }
-
-        async function loadSettings() {
-            try {
-                const token = await getToken();
-                if (!token) return;
-
-                const response = await fetch('/api/settings/ai', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await response.json();
-
-                const modelSelect = document.getElementById('modelSelect');
-                modelSelect.innerHTML = '';
-
-                const models = data.availableModels || [
-                    'gemini-2.5-flash',
-                    'gemini-2.0-flash'
-                ];
-
-                models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model;
-                    option.textContent = model;
-                    if (model === data.model) {
-                        option.selected = true;
-                    }
-                    modelSelect.appendChild(option);
-                });
-
-                document.getElementById('contextInput').value = data.context || '';
-
-            } catch (error) {
-                showMessage('Failed to load settings', 'error');
-                console.error('Error loading settings:', error);
-            }
-        }
-
-        async function loadKnowledge() {
-            try {
-                const token = await getToken();
-                if (!token) return;
-
-                const response = await fetch('/api/knowledge', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await response.json();
-
-                renderKnowledgeList(data.entries || []);
-
-            } catch (error) {
-                console.error('Error loading knowledge:', error);
-                document.getElementById('knowledgeList').innerHTML =
-                    '<div class="empty-state">Failed to load knowledge base</div>';
-            }
-        }
-
-        function renderKnowledgeList(entries) {
-            const list = document.getElementById('knowledgeList');
-            list.innerHTML = '';
-
-            if (entries.length === 0) {
-                list.innerHTML = '<div class="empty-state">No knowledge trained yet. Add content above to train the AI.</div>';
-                return;
-            }
-
-            entries.forEach(entry => {
-                const item = document.createElement('div');
-                item.className = 'knowledge-item';
-                item.innerHTML = `
-                    <div class="knowledge-info">
-                        <div class="knowledge-source">${entry.source}</div>
-                        <div class="knowledge-meta">${entry.category} • ${entry.chunks} chunks</div>
-                    </div>
-                    <button class="btn btn-danger" onclick="deleteKnowledge('${encodeURIComponent(entry.source)}')">Delete</button>
-                `;
-                list.appendChild(item);
-            });
-        }
-
-        async function saveSettings() {
-            const model = document.getElementById('modelSelect').value;
-            const context = document.getElementById('contextInput').value;
-            const btn = document.querySelector('.btn-primary');
-
-            const token = await getToken();
-            if (!token) return;
-
-            btn.disabled = true;
-            btn.textContent = 'Saving...';
-
-            try {
-                const response = await fetch('/api/settings/ai', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ model, context })
-                });
-
-                if (response.ok) {
-                    showMessage('Settings saved successfully!', 'success');
-                } else {
-                    showMessage('Failed to save settings', 'error');
-                }
-            } catch (error) {
-                showMessage('Error saving settings', 'error');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Save Settings';
-            }
-        }
-
-        async function addKnowledge() {
-            const content = document.getElementById('knowledgeContent').value.trim();
-            const source = document.getElementById('knowledgeSource').value.trim() || 'Manual Entry';
-            const category = document.getElementById('knowledgeCategory').value;
-
-            if (!content) {
-                showMessage('Please enter content to add', 'error');
-                return;
-            }
-
-            const token = await getToken();
-            if (!token) return;
-
-            const btn = document.querySelector('.btn-success');
-            btn.disabled = true;
-            btn.textContent = 'Training...';
-
-            try {
-                const response = await fetch('/api/knowledge', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ content, source, category })
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    showMessage(`Knowledge added! (${data.chunksAdded} chunks created)`, 'success');
-                    document.getElementById('knowledgeContent').value = '';
-                    document.getElementById('knowledgeSource').value = '';
-                    loadKnowledge();
-                } else {
-                    showMessage(data.error || 'Failed to add knowledge', 'error');
-                }
-            } catch (error) {
-                showMessage('Error adding knowledge', 'error');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = '➕ Add to Knowledge Base';
-            }
-        }
-
-        async function uploadFile() {
-            const fileInput = document.getElementById('fileInput');
-            const file = fileInput.files[0];
-
-            if (!file) {
-                showMessage('Please select a file first', 'error');
-                return;
-            }
-
-            const token = await getToken();
-            if (!token) return;
-
-            const btn = document.querySelector('#tab-file .btn-success');
-            btn.disabled = true;
-            btn.textContent = 'Processing...';
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const response = await fetch('/api/settings/upload', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    showMessage(`File processed! (${data.chunksAdded} chunks created)`, 'success');
-                    fileInput.value = '';
-                    loadKnowledge();
-                } else {
-                    showMessage(data.error || 'Failed to process file', 'error');
-                }
-            } catch (error) {
-                showMessage('Error uploading file', 'error');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Upload & Train';
-            }
-        }
-
-        async function deleteKnowledge(source) {
-            if (!confirm(`Delete all knowledge from "${decodeURIComponent(source)}"?`)) {
-                return;
-            }
-
-            const token = await getToken();
-            if (!token) return;
-
-            try {
-                const response = await fetch(`/api/knowledge/${source}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (response.ok) {
-                    showMessage('Knowledge deleted successfully', 'success');
-                    loadKnowledge();
-                } else {
-                    showMessage('Failed to delete knowledge', 'error');
-                }
-            } catch (error) {
-                showMessage('Error deleting knowledge', 'error');
-            }
-        }
-
-        function showMessage(text, type) {
-            const msgDiv = document.getElementById('message');
-            msgDiv.textContent = text;
-            msgDiv.className = `message ${type}`;
-            msgDiv.style.display = 'block';
-            setTimeout(() => {
-                msgDiv.style.display = 'none';
-            }, 3000);
-        }
-    </script>
+    <script type="module" src="ai.js"></script>
 </body>
 
 </html>

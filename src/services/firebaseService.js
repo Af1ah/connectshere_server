@@ -1,14 +1,29 @@
 const { db } = require('../config/firebase');
 const { collection, addDoc, query, where, orderBy, limit, getDocs, serverTimestamp, setDoc, doc, updateDoc, increment, getCountFromServer, getDoc } = require('firebase/firestore');
 
-const saveMessage = async (userId, role, content) => {
+const normalizeConversationId = (conversationId = '') => {
+    const clean = String(conversationId || '').trim();
+    if (!clean) return 'default';
+    return clean.replace(/[^a-zA-Z0-9_-]/g, '_');
+};
+
+const getMessagesCollection = (userId, conversationId = null) => {
+    if (conversationId) {
+        const safeConversationId = normalizeConversationId(conversationId);
+        return collection(db, 'users', userId, 'conversations', safeConversationId, 'messages');
+    }
+
+    return collection(db, 'users', userId, 'messages');
+};
+
+const saveMessage = async (userId, role, content, conversationId = null) => {
     try {
-        // Store messages under the user's document
-        const messagesRef = collection(db, 'users', userId, 'messages');
+        const messagesRef = getMessagesCollection(userId, conversationId);
         await addDoc(messagesRef, {
             role,
             content,
-            timestamp: serverTimestamp()
+            conversationId: conversationId || null,
+            timestamp: serverTimestamp(),
         });
 
         // Update user interaction count
@@ -47,9 +62,9 @@ const logTokenUsage = async (userId, inputTokens, outputTokens) => {
     }
 };
 
-const getConversationHistory = async (userId, messageLimit = 10) => {
+const getConversationHistory = async (userId, messageLimit = 10, conversationId = null) => {
     try {
-        const messagesRef = collection(db, 'users', userId, 'messages');
+        const messagesRef = getMessagesCollection(userId, conversationId);
         const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(messageLimit));
 
         const querySnapshot = await getDocs(q);
@@ -312,4 +327,3 @@ module.exports = {
     getOnboardingStatus,
     updateOnboardingStatus
 };
-

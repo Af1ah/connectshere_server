@@ -4,702 +4,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Documentation - ConnectSphere</title>
-    <link rel="stylesheet" href="style.css">
-    <style>
-        .api-doc {
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .endpoint-card {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-            overflow: hidden;
-        }
-
-        .endpoint-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 16px 20px;
-            border-bottom: 1px solid #eee;
-            cursor: pointer;
-        }
-
-        .endpoint-header:hover {
-            background: #f8f9fa;
-        }
-
-        .method {
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-weight: bold;
-            font-size: 12px;
-            min-width: 60px;
-            text-align: center;
-        }
-
-        .method-get {
-            background: #61affe;
-            color: white;
-        }
-
-        .method-post {
-            background: #49cc90;
-            color: white;
-        }
-
-        .method-put {
-            background: #fca130;
-            color: white;
-        }
-
-        .method-delete {
-            background: #f93e3e;
-            color: white;
-        }
-
-        .endpoint-path {
-            font-family: monospace;
-            font-size: 14px;
-            color: #333;
-            flex: 1;
-        }
-
-        .endpoint-desc {
-            color: #666;
-            font-size: 14px;
-        }
-
-        .endpoint-body {
-            padding: 20px;
-            display: none;
-            background: #fafafa;
-        }
-
-        .endpoint-body.open {
-            display: block;
-        }
-
-        .section-label {
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 8px;
-            font-size: 13px;
-            text-transform: uppercase;
-        }
-
-        .code-block {
-            background: #2d2d2d;
-            color: #f8f8f2;
-            padding: 16px;
-            border-radius: 6px;
-            font-family: monospace;
-            font-size: 13px;
-            overflow-x: auto;
-            margin-bottom: 16px;
-        }
-
-        .param-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 16px;
-        }
-
-        .param-table th,
-        .param-table td {
-            padding: 10px 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-
-        .param-table th {
-            background: #f5f5f5;
-            font-weight: 600;
-            font-size: 12px;
-            text-transform: uppercase;
-        }
-
-        .param-name {
-            font-family: monospace;
-            color: #e74c3c;
-        }
-
-        .param-type {
-            font-family: monospace;
-            color: #3498db;
-            font-size: 12px;
-        }
-
-        .required {
-            color: #e74c3c;
-            font-size: 11px;
-        }
-
-        .section-group {
-            margin-bottom: 40px;
-        }
-
-        .section-title {
-            font-size: 1.5em;
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-
-        .auth-badge {
-            background: #e74c3c;
-            color: white;
-            font-size: 10px;
-            padding: 3px 8px;
-            border-radius: 3px;
-            margin-left: auto;
-        }
-
-        .back-link {
-            display: inline-block;
-            margin-bottom: 20px;
-            color: #3498db;
-            text-decoration: none;
-        }
-
-        .intro-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-        }
-
-        .intro-card h1 {
-            margin: 0 0 10px 0;
-        }
-
-        .intro-card p {
-            margin: 0;
-            opacity: 0.9;
-        }
-
-        .auth-section {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding: 16px 20px;
-            margin-bottom: 30px;
-            border-radius: 0 6px 6px 0;
-        }
-
-        .auth-section h3 {
-            margin: 0 0 8px 0;
-            color: #856404;
-        }
-
-        .auth-section p {
-            margin: 0;
-            color: #856404;
-        }
-
-        .response-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 3px;
-            font-size: 12px;
-            margin-right: 8px;
-        }
-
-        .response-200 {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .response-400 {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .response-500 {
-            background: #f5c6cb;
-            color: #721c24;
-        }
-    </style>
+    <title>API Docs - ConnectSphere</title>
+    <link rel="stylesheet" href="app.css">
 </head>
 
-<body>
-    <div class="api-doc">
-        <a href="/" class="back-link">← Back to Dashboard</a>
-
-        <div class="intro-card">
-            <h1>📘 ConnectSphere API Documentation</h1>
-            <p>Complete API reference for the ConnectSphere WhatsApp AI platform</p>
-        </div>
-
-        <div class="auth-section">
-            <h3>🔐 Authentication</h3>
-            <p>All API endpoints (except <code>/api/config/firebase</code>) require a Firebase Auth token in the
-                Authorization header:</p>
-            <div class="code-block" style="margin-top: 10px;">Authorization: Bearer &lt;firebase_id_token&gt;</div>
-        </div>
-
-        <!-- Knowledge Base Section -->
-        <div class="section-group">
-            <h2 class="section-title">📚 Knowledge Base (RAG)</h2>
-
-            <!-- List Knowledge -->
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-get">GET</span>
-                    <span class="endpoint-path">/api/knowledge</span>
-                    <span class="endpoint-desc">List all knowledge entries</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{
-                        "entries": [
-                        {
-                        "source": "FAQ",
-                        "category": "general",
-                        "chunks": 5
-                        }
-                        ]
-                        }</div>
-                </div>
+<body style="visibility:hidden">
+    <div class="app">
+        <aside class="sidebar" style="display:flex;flex-direction:column;gap:10px">
+            <a class="brand" href="/">Connect<span>Sphere</span></a>
+            <nav class="nav">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="ai.html">AI Console</a>
+                <a href="consultant-test.html">Consultant</a>
+                <a href="api-docs.html">API Docs</a>
+            </nav>
+            <div class="sidebar-user">
+                <div data-user-name>User</div>
+                <div data-user-role class="muted">-</div>
             </div>
+        </aside>
 
-            <!-- Add Knowledge -->
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-post">POST</span>
-                    <span class="endpoint-path">/api/knowledge</span>
-                    <span class="endpoint-desc">Add text to knowledge base</span>
-                    <span class="auth-badge">AUTH</span>
+        <main class="main">
+            <header class="topbar">
+                <div>
+                    <h1 class="page-title">API Documentation</h1>
+                    <p class="page-subtitle">Current endpoint map used by AI, consultant, and dashboard pages.</p>
                 </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Request Body</div>
-                    <table class="param-table">
-                        <tr>
-                            <th>Parameter</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">content</span> <span class="required">*required</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>Text content to add to knowledge base</td>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">source</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>Source name (default: "manual")</td>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">category</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>Category: general, product, faq, policy, service</td>
-                        </tr>
-                    </table>
-                    <div class="section-label">Example Request</div>
-                    <div class="code-block">{
-                        "content": "Our business hours are 9 AM to 6 PM, Monday to Friday.",
-                        "source": "FAQ",
-                        "category": "general"
-                        }</div>
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{
-                        "message": "Knowledge added successfully",
-                        "chunksAdded": 1
-                        }</div>
+                <div class="actions">
+                    <button id="themeToggle">Dark</button>
+                    <button id="logoutBtn" class="danger">Logout</button>
                 </div>
-            </div>
+            </header>
 
-            <!-- Delete Knowledge -->
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-delete">DELETE</span>
-                    <span class="endpoint-path">/api/knowledge/:source</span>
-                    <span class="endpoint-desc">Delete knowledge by source name</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Path Parameters</div>
-                    <table class="param-table">
-                        <tr>
-                            <th>Parameter</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">source</span> <span class="required">*required</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>URL-encoded source name to delete</td>
-                        </tr>
-                    </table>
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{ "message": "Knowledge deleted successfully" }</div>
-                </div>
-            </div>
+            <section class="card">
+                <h2>Auth</h2>
+                <p class="muted">All protected routes require <code>Authorization: Bearer &lt;firebase_id_token&gt;</code>.</p>
+            </section>
 
-            <!-- Upload File -->
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-post">POST</span>
-                    <span class="endpoint-path">/api/settings/upload</span>
-                    <span class="endpoint-desc">Upload file to knowledge base</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Request</div>
-                    <p>Content-Type: <code>multipart/form-data</code></p>
-                    <table class="param-table">
-                        <tr>
-                            <th>Field</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">file</span> <span class="required">*required</span></td>
-                            <td><span class="param-type">file</span></td>
-                            <td>PDF, DOCX, XLSX, or CSV file (max 5MB)</td>
-                        </tr>
-                    </table>
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{
-                        "message": "File processed and added to knowledge base",
-                        "source": "document.pdf",
-                        "chunksAdded": 12
-                        }</div>
-                </div>
-            </div>
-        </div>
+            <section class="grid" style="margin-top:16px">
+                <article class="card">
+                    <h3>Knowledge and AI</h3>
+                    <details class="endpoint">
+                        <summary><span class="method get">GET</span><span class="path">/api/settings/ai</span></summary>
+                        <p class="muted">Read AI runtime settings and available models.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method post">POST</span><span class="path">/api/settings/ai</span></summary>
+                        <p class="muted">Update runtime model and behavior context.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method get">GET</span><span class="path">/api/knowledge</span></summary>
+                        <p class="muted">List uploaded RAG sources for current user.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method post">POST</span><span class="path">/api/knowledge</span></summary>
+                        <p class="muted">Add text knowledge (<code>content</code>, optional <code>source</code>/<code>category</code>).</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method post">POST</span><span class="path">/api/settings/upload</span></summary>
+                        <p class="muted">Upload file (PDF/DOCX/XLSX/CSV) and train RAG chunks.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method delete">DELETE</span><span class="path">/api/knowledge/:source</span></summary>
+                        <p class="muted">Delete all chunks by source name.</p>
+                    </details>
+                </article>
 
-        <!-- AI Settings Section -->
-        <div class="section-group">
-            <h2 class="section-title">⚙️ AI Settings</h2>
+                <article class="card">
+                    <h3>Consultant</h3>
+                    <details class="endpoint">
+                        <summary><span class="method get">GET</span><span class="path">/api/consultant/settings</span></summary>
+                        <p class="muted">Get booking + schedule configuration.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method post">POST</span><span class="path">/api/consultant/settings</span></summary>
+                        <p class="muted">Update consultant settings and weekly schedule.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method get">GET</span><span class="path">/api/consultant/slots/:date</span></summary>
+                        <p class="muted">Get available time slots for <code>YYYY-MM-DD</code>.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method post">POST</span><span class="path">/api/consultant/bookings</span></summary>
+                        <p class="muted">Create booking request (<code>phone</code>, <code>date</code>, <code>timeSlot</code> required).</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method get">GET</span><span class="path">/api/consultant/bookings</span></summary>
+                        <p class="muted">List bookings (optional filter by status/date).</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method put">PUT</span><span class="path">/api/consultant/bookings/:id/status</span></summary>
+                        <p class="muted">Update booking status: <code>confirmed</code>, <code>rejected</code>, <code>completed</code>.</p>
+                    </details>
+                </article>
 
-            <!-- Get Settings -->
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-get">GET</span>
-                    <span class="endpoint-path">/api/settings/ai</span>
-                    <span class="endpoint-desc">Get AI configuration</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{
-                        "model": "gemini-2.0-flash",
-                        "context": "Base instructions here...",
-                        "availableModels": [
-                        "gemini-2.5-flash",
-                        "gemini-2.0-flash",
-                        "gemini-2.0-flash-lite"
-                        ]
-                        }</div>
-                </div>
-            </div>
-
-            <!-- Update Settings -->
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-post">POST</span>
-                    <span class="endpoint-path">/api/settings/ai</span>
-                    <span class="endpoint-desc">Update AI configuration</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Request Body</div>
-                    <table class="param-table">
-                        <tr>
-                            <th>Parameter</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">model</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>AI model to use</td>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">context</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>Base system instructions</td>
-                        </tr>
-                    </table>
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{ "message": "Settings updated successfully" }</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- WhatsApp Section -->
-        <div class="section-group">
-            <h2 class="section-title">📱 WhatsApp</h2>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-get">GET</span>
-                    <span class="endpoint-path">/api/qr</span>
-                    <span class="endpoint-desc">Get WhatsApp QR code for login</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{ "qr": "data:image/png;base64,..." }</div>
-                </div>
-            </div>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-get">GET</span>
-                    <span class="endpoint-path">/api/status</span>
-                    <span class="endpoint-desc">Get WhatsApp connection status</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{
-                        "connected": true,
-                        "phone": "+1234567890"
-                        }</div>
-                </div>
-            </div>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-post">POST</span>
-                    <span class="endpoint-path">/api/disconnect</span>
-                    <span class="endpoint-desc">Disconnect WhatsApp</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{ "message": "Disconnected successfully" }</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Consultant Booking Section -->
-        <div class="section-group">
-            <h2 class="section-title">📅 Consultant Booking</h2>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-get">GET</span>
-                    <span class="endpoint-path">/api/consultant/settings</span>
-                    <span class="endpoint-desc">Get consultant booking settings</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{
-                        "enabled": true,
-                        "workingDays": ["monday", "tuesday", "wednesday"],
-                        "timeSlots": ["09:00", "10:00", "14:00"],
-                        "slotDuration": 30
-                        }</div>
-                </div>
-            </div>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-post">POST</span>
-                    <span class="endpoint-path">/api/consultant/settings</span>
-                    <span class="endpoint-desc">Update consultant settings</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Request Body</div>
-                    <div class="code-block">{
-                        "enabled": true,
-                        "workingDays": ["monday", "tuesday", "wednesday"],
-                        "timeSlots": ["09:00", "10:00", "14:00"],
-                        "slotDuration": 30
-                        }</div>
-                </div>
-            </div>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-get">GET</span>
-                    <span class="endpoint-path">/api/consultant/slots/:date</span>
-                    <span class="endpoint-desc">Get available slots for a date</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Path Parameters</div>
-                    <table class="param-table">
-                        <tr>
-                            <th>Parameter</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">date</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>Date in YYYY-MM-DD format</td>
-                        </tr>
-                    </table>
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{
-                        "slots": [
-                        { "time": "09:00", "available": true },
-                        { "time": "10:00", "available": false }
-                        ]
-                        }</div>
-                </div>
-            </div>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-post">POST</span>
-                    <span class="endpoint-path">/api/consultant/bookings</span>
-                    <span class="endpoint-desc">Create a booking</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Request Body</div>
-                    <table class="param-table">
-                        <tr>
-                            <th>Parameter</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">date</span> <span class="required">*required</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>Date in YYYY-MM-DD format</td>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">timeSlot</span> <span class="required">*required</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>Time slot in HH:MM format</td>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">name</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>Customer name</td>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">phone</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>Customer phone</td>
-                        </tr>
-                        <tr>
-                            <td><span class="param-name">reason</span></td>
-                            <td><span class="param-type">string</span></td>
-                            <td>Reason for consultation</td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-get">GET</span>
-                    <span class="endpoint-path">/api/consultant/bookings</span>
-                    <span class="endpoint-desc">List all bookings</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{
-                        "bookings": [
-                        {
-                        "id": "abc123",
-                        "date": "2026-02-01",
-                        "timeSlot": "10:00",
-                        "name": "John Doe",
-                        "status": "confirmed"
-                        }
-                        ]
-                        }</div>
-                </div>
-            </div>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-put">PUT</span>
-                    <span class="endpoint-path">/api/consultant/bookings/:id/status</span>
-                    <span class="endpoint-desc">Update booking status</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Request Body</div>
-                    <div class="code-block">{ "status": "confirmed" | "cancelled" | "completed" }</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Dashboard Section -->
-        <div class="section-group">
-            <h2 class="section-title">📊 Dashboard</h2>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-get">GET</span>
-                    <span class="endpoint-path">/api/dashboard/stats</span>
-                    <span class="endpoint-desc">Get dashboard statistics</span>
-                    <span class="auth-badge">AUTH</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{
-                        "totalUsers": 1,
-                        "totalTokens": 15420,
-                        "recentUsers": []
-                        }</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Public Section -->
-        <div class="section-group">
-            <h2 class="section-title">🌐 Public Endpoints</h2>
-
-            <div class="endpoint-card">
-                <div class="endpoint-header" onclick="toggleEndpoint(this)">
-                    <span class="method method-get">GET</span>
-                    <span class="endpoint-path">/api/config/firebase</span>
-                    <span class="endpoint-desc">Get Firebase config (public)</span>
-                </div>
-                <div class="endpoint-body">
-                    <div class="section-label">Response</div>
-                    <span class="response-badge response-200">200 OK</span>
-                    <div class="code-block">{
-                        "apiKey": "...",
-                        "authDomain": "...",
-                        "projectId": "...",
-                        ...
-                        }</div>
-                </div>
-            </div>
-        </div>
-
+                <article class="card">
+                    <h3>WhatsApp and System</h3>
+                    <details class="endpoint">
+                        <summary><span class="method get">GET</span><span class="path">/api/status</span></summary>
+                        <p class="muted">WhatsApp connection status.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method get">GET</span><span class="path">/api/qr</span></summary>
+                        <p class="muted">Get QR for WhatsApp link.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method post">POST</span><span class="path">/api/disconnect</span></summary>
+                        <p class="muted">Disconnect WhatsApp session.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method get">GET</span><span class="path">/api/dashboard/stats</span></summary>
+                        <p class="muted">User dashboard totals and recent activity.</p>
+                    </details>
+                    <details class="endpoint">
+                        <summary><span class="method get">GET</span><span class="path">/api/config/firebase</span></summary>
+                        <p class="muted">Public Firebase web config.</p>
+                    </details>
+                </article>
+            </section>
+        </main>
     </div>
 
-    <script>
-        function toggleEndpoint(header) {
-            const body = header.nextElementSibling;
-            body.classList.toggle('open');
-        }
-    </script>
+    <script type="module" src="api-docs.js"></script>
 </body>
 
 </html>

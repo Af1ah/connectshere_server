@@ -4,724 +4,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consultant Booking Test</title>
-    <style>
-        :root {
-            --bg-primary: #0f0f0f;
-            --bg-secondary: #1a1a1a;
-            --bg-card: #252525;
-            --text-primary: #ffffff;
-            --text-secondary: #a0a0a0;
-            --accent: #6366f1;
-            --accent-hover: #818cf8;
-            --success: #22c55e;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --border: #333;
-            --radius: 12px;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        h1 {
-            font-size: 1.8rem;
-            margin-bottom: 20px;
-            background: linear-gradient(135deg, var(--accent), #a855f7);
-            background-clip: text;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        h2 {
-            font-size: 1.2rem;
-            margin-bottom: 15px;
-            color: var(--text-secondary);
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .card {
-            background: var(--bg-card);
-            border-radius: var(--radius);
-            padding: 20px;
-            border: 1px solid var(--border);
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-        }
-
-        input,
-        select {
-            width: 100%;
-            padding: 10px 14px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: var(--bg-secondary);
-            color: var(--text-primary);
-            font-size: 0.95rem;
-        }
-
-        input:focus,
-        select:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-
-        .toggle-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .toggle {
-            width: 48px;
-            height: 26px;
-            background: var(--bg-secondary);
-            border-radius: 13px;
-            position: relative;
-            cursor: pointer;
-            border: 1px solid var(--border);
-            transition: background 0.2s;
-        }
-
-        .toggle.active {
-            background: var(--accent);
-        }
-
-        .toggle::after {
-            content: '';
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            background: white;
-            border-radius: 50%;
-            top: 2px;
-            left: 2px;
-            transition: transform 0.2s;
-        }
-
-        .toggle.active::after {
-            transform: translateX(22px);
-        }
-
-        button {
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: none;
-            font-size: 0.95rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-weight: 500;
-        }
-
-        .btn-primary {
-            background: var(--accent);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: var(--accent-hover);
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        .btn-outline {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-        }
-
-        .btn-outline:hover {
-            border-color: var(--accent);
-        }
-
-        .slots-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-            gap: 8px;
-            margin-top: 10px;
-        }
-
-        .slot {
-            padding: 8px;
-            text-align: center;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            border: 1px solid var(--border);
-            background: var(--bg-secondary);
-            transition: all 0.2s;
-        }
-
-        .slot:hover {
-            border-color: var(--accent);
-            background: var(--accent);
-        }
-
-        .slot.selected {
-            background: var(--accent);
-            border-color: var(--accent);
-        }
-
-        .booking-item {
-            padding: 15px;
-            border-radius: 8px;
-            background: var(--bg-secondary);
-            margin-bottom: 10px;
-            border-left: 3px solid var(--accent);
-        }
-
-        .booking-item.pending {
-            border-left-color: var(--warning);
-        }
-
-        .booking-item.confirmed {
-            border-left-color: var(--success);
-        }
-
-        .booking-item.rejected {
-            border-left-color: var(--danger);
-        }
-
-        .booking-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .booking-token {
-            font-weight: 600;
-            color: var(--accent);
-        }
-
-        .booking-status {
-            font-size: 0.8rem;
-            padding: 4px 8px;
-            border-radius: 4px;
-            text-transform: uppercase;
-        }
-
-        .booking-status.pending {
-            background: rgba(245, 158, 11, 0.2);
-            color: var(--warning);
-        }
-
-        .booking-status.confirmed {
-            background: rgba(34, 197, 94, 0.2);
-            color: var(--success);
-        }
-
-        .booking-status.rejected {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--danger);
-        }
-
-        .booking-details {
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-        }
-
-        .booking-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 10px;
-        }
-
-        .booking-actions button {
-            padding: 6px 12px;
-            font-size: 0.8rem;
-        }
-
-        .schedule-day {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px;
-            border-radius: 8px;
-            background: var(--bg-secondary);
-            margin-bottom: 8px;
-        }
-
-        .schedule-day .day-name {
-            width: 80px;
-            font-weight: 500;
-        }
-
-        .schedule-day input[type="time"] {
-            width: 100px;
-        }
-
-        .message {
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-        }
-
-        .message.success {
-            background: rgba(34, 197, 94, 0.2);
-            border: 1px solid var(--success);
-        }
-
-        .message.error {
-            background: rgba(239, 68, 68, 0.2);
-            border: 1px solid var(--danger);
-        }
-
-        .tabs {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 15px;
-        }
-
-        .tab {
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-        }
-
-        .tab.active {
-            background: var(--accent);
-            border-color: var(--accent);
-        }
-
-        #loginSection {
-            max-width: 400px;
-            margin: 100px auto;
-        }
-
-        .hidden {
-            display: none !important;
-        }
-    </style>
+    <title>Consultant Console - ConnectSphere</title>
+    <link rel="stylesheet" href="app.css">
 </head>
 
-<body>
-    <!-- Login Section -->
-    <div id="loginSection" class="card">
-        <h1>🔐 Login</h1>
-        <div id="loginMessage" class="message hidden"></div>
-        <div class="form-group">
-            <label>Email</label>
-            <input type="email" id="loginEmail" placeholder="your@email.com">
-        </div>
-        <div class="form-group">
-            <label>Password</label>
-            <input type="password" id="loginPassword" placeholder="Password">
-        </div>
-        <button class="btn-primary" onclick="login()" style="width: 100%">Login</button>
-    </div>
+<body style="visibility:hidden">
+    <div class="app">
+        <aside class="sidebar" style="display:flex;flex-direction:column;gap:10px">
+            <a class="brand" href="/">Connect<span>Sphere</span></a>
+            <nav class="nav">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="ai.html">AI Console</a>
+                <a href="consultant-test.html">Consultant</a>
+                <a href="api-docs.html">API Docs</a>
+            </nav>
+            <div class="sidebar-user">
+                <div data-user-name>User</div>
+                <div data-user-role class="muted">-</div>
+            </div>
+        </aside>
 
-    <!-- Main App -->
-    <div id="mainApp" class="container hidden">
-        <h1>🗓️ Consultant Booking Test Panel</h1>
-
-        <div id="globalMessage" class="message hidden"></div>
-
-        <div class="grid">
-            <!-- Settings Card -->
-            <div class="card">
-                <h2>⚙️ Settings</h2>
-
-                <div class="form-group toggle-group">
-                    <div id="enableToggle" class="toggle" onclick="toggleEnabled()"></div>
-                    <span>Enable Consultant Booking</span>
+        <main class="main">
+            <header class="topbar">
+                <div>
+                    <h1 class="page-title">Consultant Console</h1>
+                    <p class="page-subtitle">Live booking operations and special schedule settings.</p>
                 </div>
-
-                <div class="form-group">
-                    <label>Booking Type</label>
-                    <select id="bookingType">
-                        <option value="hourly">Hourly (Time Slots)</option>
-                        <option value="token">Token Based</option>
-                    </select>
+                <div class="actions">
+                    <button id="themeToggle">Dark</button>
+                    <button id="logoutBtn" class="danger">Logout</button>
                 </div>
+            </header>
 
-                <div class="form-group">
-                    <label>Slot Duration (minutes)</label>
-                    <input type="number" id="slotDuration" value="30" min="15" max="120">
-                </div>
+            <div id="message" class="message"></div>
 
-                <div class="form-group">
-                    <label>Max Tokens Per Day</label>
-                    <input type="number" id="maxTokens" value="30" min="1">
-                </div>
-
-                <div class="form-group toggle-group">
-                    <div id="dynamicToggle" class="toggle" onclick="toggleDynamic()"></div>
-                    <span>Dynamic Allocation</span>
-                </div>
-
-                <button class="btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+            <div class="tabs">
+                <button class="tab active" data-tab="panel-ops">Operations</button>
+                <button class="tab" data-tab="panel-settings">Special Settings</button>
             </div>
 
-            <!-- Schedule Card -->
-            <div class="card">
-                <h2>📅 Weekly Schedule</h2>
-                <div id="scheduleContainer"></div>
-                <button class="btn-primary" onclick="saveSettings()" style="margin-top: 10px">💾 Save Schedule</button>
-            </div>
-        </div>
+            <section id="panel-ops" class="tab-panel active grid two">
+                <article class="card">
+                    <h2>Create Booking</h2>
+                    <label for="bookingDate">Date</label>
+                    <input id="bookingDate" type="date">
 
-        <div class="grid">
-            <!-- Test Booking Card -->
-            <div class="card">
-                <h2>🧪 Test Booking</h2>
-
-                <div class="form-group">
-                    <label>Select Date</label>
-                    <input type="date" id="bookingDate" onchange="loadSlots()">
-                </div>
-
-                <div id="slotsContainer">
                     <label>Available Slots</label>
-                    <div id="slotsGrid" class="slots-grid">
-                        <p style="color: var(--text-secondary)">Select a date to see slots</p>
+                    <div id="slotsGrid" class="inline-actions">
+                        <span class="muted">Loading slots...</span>
                     </div>
-                </div>
 
-                <div class="form-group" style="margin-top: 15px">
-                    <label>Customer Phone</label>
-                    <input type="tel" id="customerPhone" placeholder="+91xxxxxxxxxx">
-                </div>
+                    <label for="customerPhone">Phone</label>
+                    <input id="customerPhone" type="tel" placeholder="+91xxxxxxxxxx">
 
-                <div class="form-group">
-                    <label>Customer Name</label>
-                    <input type="text" id="customerName" placeholder="John Doe">
-                </div>
+                    <label for="customerName">Name</label>
+                    <input id="customerName" type="text" placeholder="Customer name">
 
-                <div class="form-group">
-                    <label>Reason for Consultation</label>
-                    <input type="text" id="customerReason" placeholder="General inquiry...">
-                </div>
+                    <label for="customerReason">Reason</label>
+                    <input id="customerReason" type="text" placeholder="Consultation reason">
 
-                <button class="btn-primary" onclick="createBooking()">📝 Create Booking</button>
-            </div>
+                    <button id="createBookingBtn" class="primary">Create Booking</button>
+                </article>
 
-            <!-- Bookings Management -->
-            <div class="card">
-                <h2>📋 Bookings (Staff View)</h2>
+                <article class="card">
+                    <h2>Booking Queue</h2>
+                    <div class="tabs">
+                        <button class="tab active" data-booking-filter="">All</button>
+                        <button class="tab" data-booking-filter="pending">Pending</button>
+                        <button class="tab" data-booking-filter="confirmed">Confirmed</button>
+                        <button class="tab" data-booking-filter="rejected">Rejected</button>
+                    </div>
 
-                <div class="tabs">
-                    <div class="tab active" data-status="" onclick="filterBookings(this, '')">All</div>
-                    <div class="tab" data-status="pending" onclick="filterBookings(this, 'pending')">Pending</div>
-                    <div class="tab" data-status="confirmed" onclick="filterBookings(this, 'confirmed')">Confirmed</div>
-                </div>
+                    <div id="bookingsList" class="list">
+                        <div class="muted">Loading bookings...</div>
+                    </div>
+                </article>
+            </section>
 
-                <div id="bookingsContainer">
-                    <p style="color: var(--text-secondary)">Loading bookings...</p>
-                </div>
+            <section id="panel-settings" class="tab-panel grid">
+                <article class="card">
+                    <h2>General Configuration</h2>
+                    <div class="row">
+                        <div>
+                            <label><input id="enabled" type="checkbox"> Booking Enabled</label>
+                        </div>
+                        <div>
+                            <label><input id="dynamicAllocation" type="checkbox"> Dynamic Allocation</label>
+                        </div>
+                    </div>
 
-                <button class="btn-outline" onclick="loadBookings()" style="margin-top: 10px">🔄 Refresh</button>
-            </div>
-        </div>
+                    <div class="row">
+                        <div>
+                            <label for="bookingType">Booking Type</label>
+                            <select id="bookingType">
+                                <option value="hourly">hourly</option>
+                                <option value="token">token</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="slotDuration">Slot Duration (min)</label>
+                            <input id="slotDuration" type="number" min="15" max="120" value="30">
+                        </div>
+                    </div>
+
+                    <label for="maxTokens">Max Tokens Per Day</label>
+                    <input id="maxTokens" type="number" min="1" max="500" value="30">
+                </article>
+
+                <article class="card">
+                    <h2>Schedule Settings</h2>
+                    <p class="muted">Editable anytime. Values are validated and stored under secure user settings in backend.</p>
+                    <div id="scheduleGrid" class="schedule-grid"></div>
+                    <div style="margin-top:12px">
+                        <button id="saveSettingsBtn" class="primary">Save Settings</button>
+                    </div>
+                </article>
+            </section>
+        </main>
     </div>
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
-
-    <script>
-        let authToken = null;
-        let currentSettings = {};
-        let selectedSlot = null;
-        let currentFilter = '';
-
-        const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-
-        // Initialize Firebase
-        async function initFirebase() {
-            const res = await fetch('/api/config/firebase');
-            const config = await res.json();
-            firebase.initializeApp(config);
-
-            firebase.auth().onAuthStateChanged(async (user) => {
-                if (user) {
-                    authToken = await user.getIdToken();
-                    document.getElementById('loginSection').classList.add('hidden');
-                    document.getElementById('mainApp').classList.remove('hidden');
-                    loadSettings();
-                    loadBookings();
-                    initSchedule();
-
-                    // Set default date to today
-                    const today = new Date().toISOString().split('T')[0];
-                    document.getElementById('bookingDate').value = today;
-                    loadSlots();
-                }
-            });
-        }
-
-        async function login() {
-            const email = document.getElementById('loginEmail').value;
-            const password = document.getElementById('loginPassword').value;
-
-            try {
-                await firebase.auth().signInWithEmailAndPassword(email, password);
-            } catch (error) {
-                showMessage('loginMessage', error.message, 'error');
-            }
-        }
-
-        function showMessage(elementId, message, type) {
-            const el = document.getElementById(elementId);
-            el.textContent = message;
-            el.className = `message ${type}`;
-            el.classList.remove('hidden');
-            setTimeout(() => el.classList.add('hidden'), 5000);
-        }
-
-        async function apiCall(endpoint, method = 'GET', body = null) {
-            const options = {
-                method,
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            };
-            if (body) options.body = JSON.stringify(body);
-
-            const res = await fetch(`/api${endpoint}`, options);
-            return res.json();
-        }
-
-        // Settings Management
-        async function loadSettings() {
-            currentSettings = await apiCall('/consultant/settings');
-            updateSettingsUI();
-        }
-
-        function updateSettingsUI() {
-            document.getElementById('enableToggle').classList.toggle('active', currentSettings.enabled);
-            document.getElementById('dynamicToggle').classList.toggle('active', currentSettings.dynamicAllocation);
-            document.getElementById('bookingType').value = currentSettings.bookingType || 'hourly';
-            document.getElementById('slotDuration').value = currentSettings.slotDuration || 30;
-            document.getElementById('maxTokens').value = currentSettings.maxTokensPerDay || 30;
-
-            if (currentSettings.schedule) {
-                DAYS.forEach(day => {
-                    const toggle = document.getElementById(`${day}Toggle`);
-                    const start = document.getElementById(`${day}Start`);
-                    const end = document.getElementById(`${day}End`);
-                    const breakStart = document.getElementById(`${day}BreakStart`);
-                    const breakEnd = document.getElementById(`${day}BreakEnd`);
-
-                    if (toggle && currentSettings.schedule[day]) {
-                        toggle.classList.toggle('active', currentSettings.schedule[day].enabled);
-                        if (start) start.value = currentSettings.schedule[day].start || '09:00';
-                        if (end) end.value = currentSettings.schedule[day].end || '17:00';
-                        if (breakStart) breakStart.value = currentSettings.schedule[day].breakStart || '12:00';
-                        if (breakEnd) breakEnd.value = currentSettings.schedule[day].breakEnd || '13:00';
-                    }
-                });
-            }
-        }
-
-        function initSchedule() {
-            const container = document.getElementById('scheduleContainer');
-            container.innerHTML = DAYS.map(day => `
-                <div class="schedule-day">
-                    <div id="${day}Toggle" class="toggle" onclick="toggleDay('${day}')" style="flex-shrink: 0"></div>
-                    <span class="day-name">${day.charAt(0).toUpperCase() + day.slice(1)}</span>
-                    <input type="time" id="${day}Start" value="09:00" title="Start">
-                    <input type="time" id="${day}End" value="17:00" title="End">
-                    <input type="time" id="${day}BreakStart" value="12:00" title="Break Start">
-                    <input type="time" id="${day}BreakEnd" value="13:00" title="Break End">
-                </div>
-            `).join('');
-
-            if (currentSettings.schedule) {
-                updateSettingsUI();
-            }
-        }
-
-        function toggleEnabled() {
-            document.getElementById('enableToggle').classList.toggle('active');
-        }
-
-        function toggleDynamic() {
-            document.getElementById('dynamicToggle').classList.toggle('active');
-        }
-
-        function toggleDay(day) {
-            document.getElementById(`${day}Toggle`).classList.toggle('active');
-        }
-
-        async function saveSettings() {
-            const schedule = {};
-            DAYS.forEach(day => {
-                schedule[day] = {
-                    enabled: document.getElementById(`${day}Toggle`)?.classList.contains('active') || false,
-                    start: document.getElementById(`${day}Start`)?.value || '09:00',
-                    end: document.getElementById(`${day}End`)?.value || '17:00',
-                    breakStart: document.getElementById(`${day}BreakStart`)?.value || '12:00',
-                    breakEnd: document.getElementById(`${day}BreakEnd`)?.value || '13:00'
-                };
-            });
-
-            const settings = {
-                enabled: document.getElementById('enableToggle').classList.contains('active'),
-                bookingType: document.getElementById('bookingType').value,
-                slotDuration: parseInt(document.getElementById('slotDuration').value),
-                maxTokensPerDay: parseInt(document.getElementById('maxTokens').value),
-                dynamicAllocation: document.getElementById('dynamicToggle').classList.contains('active'),
-                schedule
-            };
-
-            const result = await apiCall('/consultant/settings', 'POST', settings);
-            showMessage('globalMessage', result.message || 'Settings saved!', 'success');
-            currentSettings = settings;
-        }
-
-        // Slots Management
-        async function loadSlots() {
-            const date = document.getElementById('bookingDate').value;
-            if (!date) return;
-
-            const result = await apiCall(`/consultant/slots/${date}`);
-            const container = document.getElementById('slotsGrid');
-
-            if (!result.available) {
-                container.innerHTML = `<p style="color: var(--text-secondary)">${result.reason || 'No slots available'}</p>`;
-                return;
-            }
-
-            container.innerHTML = result.slots.map(slot => `
-                <div class="slot" onclick="selectSlot(this, '${slot}')">${slot}</div>
-            `).join('');
-
-            selectedSlot = null;
-        }
-
-        function selectSlot(el, slot) {
-            document.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
-            el.classList.add('selected');
-            selectedSlot = slot;
-        }
-
-        // Booking Management
-        async function createBooking() {
-            if (!selectedSlot) {
-                showMessage('globalMessage', 'Please select a time slot', 'error');
-                return;
-            }
-
-            const bookingData = {
-                phone: document.getElementById('customerPhone').value,
-                name: document.getElementById('customerName').value,
-                reason: document.getElementById('customerReason').value,
-                date: document.getElementById('bookingDate').value,
-                timeSlot: selectedSlot
-            };
-
-            if (!bookingData.phone) {
-                showMessage('globalMessage', 'Phone number is required', 'error');
-                return;
-            }
-
-            const result = await apiCall('/consultant/bookings', 'POST', bookingData);
-
-            if (result.success) {
-                showMessage('globalMessage', result.message, 'success');
-                loadSlots();
-                loadBookings();
-                // Clear form
-                document.getElementById('customerPhone').value = '';
-                document.getElementById('customerName').value = '';
-                document.getElementById('customerReason').value = '';
-                selectedSlot = null;
-            } else {
-                showMessage('globalMessage', result.error, 'error');
-            }
-        }
-
-        async function loadBookings() {
-            const endpoint = currentFilter ? `/consultant/bookings?status=${currentFilter}` : '/consultant/bookings';
-            const result = await apiCall(endpoint);
-            const container = document.getElementById('bookingsContainer');
-
-            if (!result.bookings || result.bookings.length === 0) {
-                container.innerHTML = '<p style="color: var(--text-secondary)">No bookings found</p>';
-                return;
-            }
-
-            container.innerHTML = result.bookings.map(booking => `
-                <div class="booking-item ${booking.status}">
-                    <div class="booking-header">
-                        <span class="booking-token">Token #${booking.tokenNumber}</span>
-                        <span class="booking-status ${booking.status}">${booking.status}</span>
-                    </div>
-                    <div class="booking-details">
-                        <strong>${booking.name || 'Unknown'}</strong><br>
-                        📱 ${booking.phone}<br>
-                        📅 ${booking.date} at ${booking.timeSlot}<br>
-                        💬 ${booking.reason || 'No reason provided'}
-                    </div>
-                    ${booking.status === 'pending' ? `
-                        <div class="booking-actions">
-                            <button class="btn-success" onclick="updateStatus('${booking.id}', 'confirmed')">✓ Confirm</button>
-                            <button class="btn-danger" onclick="updateStatus('${booking.id}', 'rejected')">✕ Reject</button>
-                        </div>
-                    ` : ''}
-                </div>
-            `).join('');
-        }
-
-        function filterBookings(el, status) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            el.classList.add('active');
-            currentFilter = status;
-            loadBookings();
-        }
-
-        async function updateStatus(bookingId, status) {
-            const result = await apiCall(`/consultant/bookings/${bookingId}/status`, 'PUT', { status });
-            showMessage('globalMessage', result.message || 'Status updated', 'success');
-            loadBookings();
-        }
-
-        // Initialize
-        initFirebase();
-    </script>
+    <script type="module" src="consultant.js"></script>
 </body>
 
 </html>

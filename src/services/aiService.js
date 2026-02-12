@@ -4,7 +4,7 @@ const firebaseService = require('./firebaseService');
 const knowledgeService = require('./knowledgeService');
 
 let ai = null;
-const modelName = 'gemini-2.0-flash';
+const modelName = 'gemini-3-flash-preview';
 
 const initialize = () => {
     if (process.env.GEMINI_API_KEY) {
@@ -29,14 +29,23 @@ const shouldReplyToMessage = (userMessage) => {
     return replyTriggers.some(trigger => trigger.test(userMessage));
 };
 
-const generateResponse = async (userMessage, userId, senderPhone = 'Unknown') => {
+const extractTextFromModelResult = (result) => {
+    const parts = result?.candidates?.[0]?.content?.parts || [];
+    return parts
+        .filter((part) => typeof part?.text === 'string')
+        .map((part) => part.text)
+        .join('')
+        .trim();
+};
+
+const generateResponse = async (userMessage, userId, senderPhone = 'Unknown', senderName = null, conversationId = null) => {
     if (!ai) {
         return "I'm currently offline. Please try again later.";
     }
 
     // Save user message to Firebase
     if (userId) {
-        await firebaseService.saveMessage(userId, 'user', userMessage);
+        await firebaseService.saveMessage(userId, 'user', userMessage, conversationId);
     }
 
     // Fetch dynamic settings
@@ -140,12 +149,16 @@ EXAMPLE RESPONSES:
                                     type: 'string',
                                     description: 'Time slot in HH:MM format (e.g., 14:00)'
                                 },
+                                name: {
+                                    type: 'string',
+                                    description: 'Customer name for booking'
+                                },
                                 reason: {
                                     type: 'string',
                                     description: 'Reason for consultation'
                                 }
                             },
-                            required: ['date', 'timeSlot']
+                            required: ['date', 'timeSlot', 'name', 'reason']
                         }
                     },
                     {
@@ -175,13 +188,14 @@ EXAMPLE RESPONSES:
         tools: bookingTools,
         systemInstruction: [
             {
-                text: `You are 'ConnectSphere', a WhatsApp customer support assistant for a business.
+                text: `You are 'ConnectSphere', a 2026-grade WhatsApp business assistant.
 
 CRITICAL RULE: Keep ALL responses EXTREMELY SHORT (maximum 200 characters or 2-3 short sentences). One topic per message only!
 
 PRIMARY DIRECTIVES:
-1. GROUNDING WITH HELPFULNESS: Answer primarily based on the "Context Data". If the exact answer isn't there but you can infer a helpful response or offer related services, do so. If completely unsure, say: "I'm not sure about that specific detail, but I can help you with [one service]."
-2. ZERO HALLUCINATION: Do not invent specific prices or policies not in the text.
+1. KNOWLEDGE BASE FIRST: Treat uploaded RAG knowledge as the source of truth. Use base context only as behavior style, not factual policy.
+2. GROUNDING WITH HELPFULNESS: If exact details are missing, provide a safe next step and ask one short follow-up.
+3. ZERO HALLUCINATION: Do not invent specific prices or policies not in the text.
 3. WHATSAPP STYLE: 
    - MAXIMUM 2-3 SHORT SENTENCES per reply.
    - ONE topic or question at a time. Never combine multiple topics.
@@ -223,7 +237,7 @@ GOAL:
 - Solve queries through SHORT back-and-forth conversation
 - One step at a time, confirm, then continue
 
-CONTEXT DATA:
+KNOWLEDGE + STYLE INPUT:
 ${fullContext}
 ${consultantInstructions}`,
             }
@@ -232,7 +246,7 @@ ${consultantInstructions}`,
 
     let history = [];
     if (userId) {
-        history = await firebaseService.getConversationHistory(userId);
+        history = await firebaseService.getConversationHistory(userId, 10, conversationId);
     }
 
     const contents = [
@@ -255,7 +269,7 @@ ${consultantInstructions}`,
         });
 
         // Handle function calls
-        let responseText = result.text;
+        let responseText = extractTextFromModelResult(result);
 
         // Check if there's a function call
         if (result.candidates?.[0]?.content?.parts) {
@@ -272,14 +286,25 @@ ${consultantInstructions}`,
                         if (functionName === 'get_available_slots' && consultantServiceRef) {
                             functionResult = await consultantServiceRef.getAvailableSlots(userId, args.date);
                         } else if (functionName === 'create_booking' && consultantServiceRef) {
+                            if (!args.name || !args.reason) {
+                                functionResult = {
+                                    success: false,
+                                    missingFields: [
+                                        ...(!args.name ? ['name'] : []),
+                                        ...(!args.reason ? ['reason'] : [])
+                                    ],
+                                    message: 'Missing required booking details'
+                                };
+                            } else {
                             // Use the sender's phone number from WhatsApp
                             functionResult = await consultantServiceRef.createBooking(userId, {
                                 phone: senderPhone,
-                                name: 'WhatsApp Customer',
-                                reason: args.reason || 'Via WhatsApp',
+                                name: args.name || senderName || 'WhatsApp Customer',
+                                reason: args.reason,
                                 date: args.date,
                                 timeSlot: args.timeSlot
                             });
+                            }
                         } else if (functionName === 'get_next_available_dates' && consultantServiceRef) {
                             functionResult = await consultantServiceRef.getNextAvailableDates(userId, args.count || 5);
                         }
@@ -293,7 +318,7 @@ ${consultantInstructions}`,
                         ...contents,
                         {
                             role: 'model',
-                            parts: [{ functionCall: part.functionCall }]
+                            parts: [part]
                         },
                         {
                             role: 'function',
@@ -312,7 +337,7 @@ ${consultantInstructions}`,
                         contents: functionResponseContents,
                     });
 
-                    responseText = followUpResult.text;
+                    responseText = extractTextFromModelResult(followUpResult);
                     result = followUpResult;
                 }
             }
@@ -354,7 +379,7 @@ ${consultantInstructions}`,
 
         // Save AI response to Firebase
         if (userId && responseText) {
-            await firebaseService.saveMessage(userId, 'model', responseText);
+            await firebaseService.saveMessage(userId, 'model', responseText, conversationId);
             // Log token usage
             await firebaseService.logTokenUsage(userId, inputTokens, outputTokens);
         }
@@ -371,16 +396,3 @@ module.exports = {
     generateResponse,
     shouldReplyToMessage
 };
-// add a option in friend end and logic for check the bussiness porpos selection advanced features section.
-
-// product selling.
-
-// appoiment ticketing. for doctores 
-
-// ticket rising for problems.
-
-// add bot if toggiled anytrhing add ai instructions.
-
-// also add option and interface to confim each even if it purchase(confirmed or rejection with reasons.), confirm cunsultancy , or rejection.
-
-// if 

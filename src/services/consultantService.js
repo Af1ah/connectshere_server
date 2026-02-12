@@ -12,6 +12,66 @@ const {
 
 // Kolkata timezone
 const TIMEZONE = 'Asia/Kolkata';
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+const DEFAULT_SCHEDULE = {
+    monday: { enabled: true, start: '09:00', end: '17:00', breakStart: '12:00', breakEnd: '13:00' },
+    tuesday: { enabled: true, start: '09:00', end: '17:00', breakStart: '12:00', breakEnd: '13:00' },
+    wednesday: { enabled: true, start: '09:00', end: '17:00', breakStart: '12:00', breakEnd: '13:00' },
+    thursday: { enabled: true, start: '09:00', end: '17:00', breakStart: '12:00', breakEnd: '13:00' },
+    friday: { enabled: true, start: '09:00', end: '17:00', breakStart: '12:00', breakEnd: '13:00' },
+    saturday: { enabled: false, start: '10:00', end: '14:00', breakStart: null, breakEnd: null },
+    sunday: { enabled: false, start: null, end: null, breakStart: null, breakEnd: null }
+};
+
+const isValidTime = (value) => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+const normalizeDaySchedule = (dayName, input = {}) => {
+    const fallback = DEFAULT_SCHEDULE[dayName];
+    const enabled = Boolean(input.enabled);
+    const start = isValidTime(input.start) ? input.start : fallback.start;
+    const end = isValidTime(input.end) ? input.end : fallback.end;
+    const breakStart = input.breakStart && isValidTime(input.breakStart) ? input.breakStart : fallback.breakStart;
+    const breakEnd = input.breakEnd && isValidTime(input.breakEnd) ? input.breakEnd : fallback.breakEnd;
+
+    if (enabled && (!start || !end || timeToMinutes(start) >= timeToMinutes(end))) {
+        throw new Error(`Invalid schedule for ${dayName}: start/end time`);
+    }
+
+    if (enabled && breakStart && breakEnd && timeToMinutes(breakStart) >= timeToMinutes(breakEnd)) {
+        throw new Error(`Invalid schedule for ${dayName}: break time`);
+    }
+
+    return {
+        enabled,
+        start: enabled ? start : null,
+        end: enabled ? end : null,
+        breakStart: enabled ? breakStart : null,
+        breakEnd: enabled ? breakEnd : null
+    };
+};
+
+const sanitizeSettings = (settings = {}) => {
+    const normalized = {
+        enabled: Boolean(settings.enabled),
+        bookingType: settings.bookingType === 'token' ? 'token' : 'hourly',
+        slotDuration: Number.isInteger(settings.slotDuration) ? settings.slotDuration : parseInt(settings.slotDuration, 10),
+        maxTokensPerDay: Number.isInteger(settings.maxTokensPerDay) ? settings.maxTokensPerDay : parseInt(settings.maxTokensPerDay, 10),
+        dynamicAllocation: Boolean(settings.dynamicAllocation),
+        timezone: TIMEZONE,
+        schedule: {}
+    };
+
+    normalized.slotDuration = Number.isFinite(normalized.slotDuration) ? Math.min(120, Math.max(15, normalized.slotDuration)) : 30;
+    normalized.maxTokensPerDay = Number.isFinite(normalized.maxTokensPerDay) ? Math.min(500, Math.max(1, normalized.maxTokensPerDay)) : 30;
+
+    const inputSchedule = settings.schedule || {};
+    for (const day of DAYS) {
+        normalized.schedule[day] = normalizeDaySchedule(day, inputSchedule[day] || DEFAULT_SCHEDULE[day]);
+    }
+
+    return normalized;
+};
 
 /**
  * Get consultant settings for a user
@@ -32,15 +92,8 @@ const getSettings = async (userId) => {
             slotDuration: 30, // minutes
             maxTokensPerDay: 30,
             dynamicAllocation: false, // Allow flexible slot times
-            schedule: {
-                monday: { enabled: true, start: '09:00', end: '17:00', breakStart: '12:00', breakEnd: '13:00' },
-                tuesday: { enabled: true, start: '09:00', end: '17:00', breakStart: '12:00', breakEnd: '13:00' },
-                wednesday: { enabled: true, start: '09:00', end: '17:00', breakStart: '12:00', breakEnd: '13:00' },
-                thursday: { enabled: true, start: '09:00', end: '17:00', breakStart: '12:00', breakEnd: '13:00' },
-                friday: { enabled: true, start: '09:00', end: '17:00', breakStart: '12:00', breakEnd: '13:00' },
-                saturday: { enabled: false, start: '10:00', end: '14:00', breakStart: null, breakEnd: null },
-                sunday: { enabled: false, start: null, end: null, breakStart: null, breakEnd: null }
-            }
+            timezone: TIMEZONE,
+            schedule: DEFAULT_SCHEDULE
         };
     } catch (error) {
         console.error('Error getting consultant settings:', error);
@@ -53,9 +106,10 @@ const getSettings = async (userId) => {
  */
 const updateSettings = async (userId, settings) => {
     try {
+        const sanitized = sanitizeSettings(settings);
         const docRef = doc(db, 'users', userId, 'settings', 'consultant_config');
         await setDoc(docRef, {
-            ...settings,
+            ...sanitized,
             updatedAt: serverTimestamp()
         }, { merge: true });
         return true;

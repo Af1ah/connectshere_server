@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - ConnectSphere</title>
+    <link rel="stylesheet" href="app.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+
+<body style="visibility:hidden">
+    <div class="app">
+        <aside class="sidebar" style="display:flex;flex-direction:column;gap:10px">
+            <a class="brand" href="/">Connect<span>Sphere</span></a>
+            <nav class="nav">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="ai.html">AI Console</a>
+                <a href="consultant-test.html">Consultant</a>
+                <a href="api-docs.html">API Docs</a>
+            </nav>
+            <div class="sidebar-user">
+                <div data-user-name>User</div>
+                <div data-user-role class="muted">-</div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <div>
+                    <h1 class="page-title">Dashboard</h1>
+                    <p class="page-subtitle">Operational overview for WhatsApp, AI usage, and user activity.</p>
+                </div>
+                <div class="actions">
+                    <button id="themeToggle">Dark</button>
+                    <button id="logoutBtn" class="danger">Logout</button>
+                </div>
+            </header>
+
+            <section class="card" style="margin-bottom:16px">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+                    <div>
+                        <h2 style="margin-bottom:4px">WhatsApp Connection</h2>
+                        <div class="muted">Current status: <span id="connectionStatusText">checking</span></div>
+                        <div style="margin-top:8px"><span id="connectionStatusBadge" class="status-pill">checking</span></div>
+                    </div>
+                    <div class="inline-actions">
+                        <button id="showQrBtn" style="display:none">Show QR Code</button>
+                        <button id="disconnectBtn" class="danger" style="display:none">Disconnect</button>
+                        <button id="clearCredsBtn">Clear Credentials</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="grid two">
+                <article class="card">
+                    <h3>Total Users</h3>
+                    <div id="totalUsers" style="font-size:2rem;font-weight:800">-</div>
+                </article>
+                <article class="card">
+                    <h3>Total Tokens Used</h3>
+                    <div id="totalTokens" style="font-size:2rem;font-weight:800">-</div>
+                </article>
+                <article class="card">
+                    <h3>Total Interactions</h3>
+                    <div id="totalInteractions" style="font-size:2rem;font-weight:800">-</div>
+                </article>
+            </section>
+
+            <section class="card" style="margin-top:16px">
+                <h3>Quick Access</h3>
+                <div class="inline-actions" style="margin-top:8px">
+                    <a class="btn" href="ai.html">Open AI Console</a>
+                    <a class="btn" href="consultant-test.html">Open Consultant</a>
+                    <a class="btn" href="api-docs.html">Open API Docs</a>
+                </div>
+            </section>
+
+            <section class="card" style="margin-top:16px">
+                <h3>Recent Users</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>User ID</th>
+                                <th>Interactions</th>
+                                <th>Last Active</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersList">
+                            <tr>
+                                <td colspan="3" class="muted">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="qrModal" class="modal-backdrop">
+        <div class="modal-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+                <h3 style="margin:0">Scan QR Code</h3>
+                <button id="closeQrModal">Close</button>
+            </div>
+            <div style="display:flex;justify-content:center;background:#fff;border-radius:12px;padding:10px">
+                <div id="qrCode"></div>
+            </div>
+            <p class="muted" style="margin-top:10px">WhatsApp > Settings > Linked Devices > Link a Device</p>
+        </div>
+    </div>
+
+    <script type="module" src="dashboard-page.js"></script>
+</body>
+
+</html>
