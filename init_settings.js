@@ -16,8 +16,12 @@ const initialSettings = {
 
 async function run() {
     try {
+        const userId = process.env.TEST_USER_ID || process.env.DEFAULT_USER_ID;
+        if (!userId) {
+            throw new Error('Set TEST_USER_ID (or DEFAULT_USER_ID) in environment');
+        }
         console.log('Initializing AI Settings...');
-        const success = await firebaseService.updateAISettings(initialSettings);
+        const success = await firebaseService.updateAISettings(userId, initialSettings);
         if (success) {
             console.log('✅ AI Settings initialized successfully.');
         } else {

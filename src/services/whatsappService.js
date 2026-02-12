@@ -6,9 +6,19 @@ const bookingState = require('./bookingStateManager');
 const pino = require('pino');
 
 const sessions = new Map(); // userId -> { sock, qr, status, retryCount }
+const ENABLE_PRESENCE_UPDATES = process.env.WHATSAPP_PRESENCE_UPDATES === 'true';
 
 const getConversationKey = (senderPhone) => `wa_${String(senderPhone || 'unknown').replace(/[^0-9a-zA-Z_-]/g, '')}`;
 const getBookingKey = (userId, senderPhone) => `${userId}::${getConversationKey(senderPhone)}`;
+
+const updatePresence = async (sock, state, jid) => {
+    if (!ENABLE_PRESENCE_UPDATES) return;
+    try {
+        await sock.sendPresenceUpdate(state, jid);
+    } catch (_) {
+        // Presence updates are optional; ignore failures.
+    }
+};
 
 /**
  * Send a message with interactive buttons
@@ -226,7 +236,7 @@ const processMessage = async (sock, msg, userId) => {
 
     try {
         await sock.readMessages([msg.key]);
-        await sock.sendPresenceUpdate('composing', msg.key.remoteJid);
+        await updatePresence(sock, 'composing', msg.key.remoteJid);
 
         // Extract sender's phone number
         let senderPhone = 'Unknown';
@@ -250,7 +260,7 @@ const processMessage = async (sock, msg, userId) => {
         if (bookingState.isBookingAction(messageContent)) {
             const handled = await handleBookingButton(sock, remoteJid, userId, bookingKey, senderPhone, messageContent);
             if (handled) {
-                await sock.sendPresenceUpdate('paused', remoteJid);
+                await updatePresence(sock, 'paused', remoteJid);
                 return;
             }
         }
@@ -258,7 +268,7 @@ const processMessage = async (sock, msg, userId) => {
         // Check if user is in a booking flow and typing text (e.g., name)
         const textHandled = await handleBookingTextInput(sock, remoteJid, userId, bookingKey, senderPhone, messageContent);
         if (textHandled) {
-            await sock.sendPresenceUpdate('paused', remoteJid);
+            await updatePresence(sock, 'paused', remoteJid);
             return;
         }
 
@@ -285,7 +295,7 @@ const processMessage = async (sock, msg, userId) => {
                 });
             }
 
-            await sock.sendPresenceUpdate('paused', remoteJid);
+            await updatePresence(sock, 'paused', remoteJid);
             return;
         }
 
@@ -310,11 +320,11 @@ const processMessage = async (sock, msg, userId) => {
             await sock.sendMessage(remoteJid, messageOptions);
         }
 
-        await sock.sendPresenceUpdate('paused', remoteJid);
+        await updatePresence(sock, 'paused', remoteJid);
 
     } catch (error) {
         console.error(`User ${userId}: Error processing message:`, error);
-        await sock.sendPresenceUpdate('paused', msg.key.remoteJid).catch(() => { });
+        await updatePresence(sock, 'paused', msg.key.remoteJid);
     }
 };
 

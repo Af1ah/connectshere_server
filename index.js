@@ -44,9 +44,8 @@ app.use('/api', apiRoutes)
 aiService.initialize()
 knowledgeService.initialize()
 
-// Auto-init disabled - frontend triggers connection when user opens dashboard
-// const autoInitService = require('./src/services/autoInitService')
-// autoInitService.autoInitializeUsers()
+const autoInitService = require('./src/services/autoInitService')
+autoInitService.autoInitializeUsers()
 
 const server = app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)

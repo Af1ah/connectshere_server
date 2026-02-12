@@ -8,7 +8,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "migrate:4nf": "node scripts/migrate-4nf.js",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
@@ -27,5 +29,8 @@
     "pino": "^10.1.0",
     "qrcode": "^1.5.4",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
   }
 }

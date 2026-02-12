@@ -6,8 +6,7 @@
 const { db } = require('../config/firebase');
 const {
     doc, getDoc, setDoc, collection, addDoc, getDocs,
-    query, where, orderBy, updateDoc, serverTimestamp,
-    runTransaction, Timestamp
+    query, where, updateDoc, serverTimestamp, writeBatch
 } = require('firebase/firestore');
 
 // Kolkata timezone
@@ -73,6 +72,51 @@ const sanitizeSettings = (settings = {}) => {
     return normalized;
 };
 
+const getDefaultSettings = () => ({
+    enabled: false,
+    bookingType: 'hourly',
+    slotDuration: 30,
+    maxTokensPerDay: 30,
+    dynamicAllocation: false,
+    timezone: TIMEZONE,
+    schedule: DEFAULT_SCHEDULE
+});
+
+const getScheduleCollection = (userId) => collection(db, 'users', userId, 'consultant_schedule');
+
+const getScheduleFromDocs = async (userId) => {
+    const scheduleSnapshot = await getDocs(getScheduleCollection(userId));
+    const schedule = {};
+    let hasRows = false;
+    scheduleSnapshot.forEach((scheduleDoc) => {
+        const dayName = scheduleDoc.id;
+        if (!DAYS.includes(dayName)) return;
+        hasRows = true;
+        schedule[dayName] = normalizeDaySchedule(dayName, scheduleDoc.data());
+    });
+
+    for (const day of DAYS) {
+        if (!schedule[day]) {
+            schedule[day] = DEFAULT_SCHEDULE[day];
+        }
+    }
+
+    return { schedule, hasRows };
+};
+
+const persistSchedule = async (userId, schedule) => {
+    const scheduleRef = getScheduleCollection(userId);
+    const existing = await getDocs(scheduleRef);
+    const batch = writeBatch(db);
+
+    existing.forEach((docSnap) => batch.delete(docSnap.ref));
+    for (const day of DAYS) {
+        batch.set(doc(scheduleRef, day), schedule[day]);
+    }
+
+    await batch.commit();
+};
+
 /**
  * Get consultant settings for a user
  */
@@ -80,21 +124,26 @@ const getSettings = async (userId) => {
     try {
         const docRef = doc(db, 'users', userId, 'settings', 'consultant_config');
         const snapshot = await getDoc(docRef);
+        const { schedule, hasRows } = await getScheduleFromDocs(userId);
 
         if (snapshot.exists()) {
-            return snapshot.data();
+            const raw = snapshot.data();
+            const settings = {
+                ...getDefaultSettings(),
+                ...raw
+            };
+
+            if (raw.schedule && !hasRows) {
+                settings.schedule = raw.schedule;
+            } else {
+                settings.schedule = schedule;
+            }
+
+            return settings;
         }
 
         // Return default settings if not found
-        return {
-            enabled: false,
-            bookingType: 'hourly', // 'hourly' or 'token'
-            slotDuration: 30, // minutes
-            maxTokensPerDay: 30,
-            dynamicAllocation: false, // Allow flexible slot times
-            timezone: TIMEZONE,
-            schedule: DEFAULT_SCHEDULE
-        };
+        return getDefaultSettings();
     } catch (error) {
         console.error('Error getting consultant settings:', error);
         throw error;
@@ -109,9 +158,15 @@ const updateSettings = async (userId, settings) => {
         const sanitized = sanitizeSettings(settings);
         const docRef = doc(db, 'users', userId, 'settings', 'consultant_config');
         await setDoc(docRef, {
-            ...sanitized,
+            enabled: sanitized.enabled,
+            bookingType: sanitized.bookingType,
+            slotDuration: sanitized.slotDuration,
+            maxTokensPerDay: sanitized.maxTokensPerDay,
+            dynamicAllocation: sanitized.dynamicAllocation,
+            timezone: sanitized.timezone,
             updatedAt: serverTimestamp()
         }, { merge: true });
+        await persistSchedule(userId, sanitized.schedule);
         return true;
     } catch (error) {
         console.error('Error updating consultant settings:', error);

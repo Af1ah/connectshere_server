@@ -1,5 +1,21 @@
 const { db } = require('../config/firebase');
-const { collection, addDoc, query, where, orderBy, limit, getDocs, serverTimestamp, setDoc, doc, updateDoc, increment, getCountFromServer, getDoc } = require('firebase/firestore');
+const {
+    collection,
+    addDoc,
+    query,
+    where,
+    orderBy,
+    limit,
+    getDocs,
+    serverTimestamp,
+    setDoc,
+    doc,
+    updateDoc,
+    increment,
+    getDoc,
+    deleteDoc,
+    writeBatch
+} = require('firebase/firestore');
 
 const normalizeConversationId = (conversationId = '') => {
     const clean = String(conversationId || '').trim();
@@ -7,23 +23,33 @@ const normalizeConversationId = (conversationId = '') => {
     return clean.replace(/[^a-zA-Z0-9_-]/g, '_');
 };
 
-const getMessagesCollection = (userId, conversationId = null) => {
-    if (conversationId) {
-        const safeConversationId = normalizeConversationId(conversationId);
-        return collection(db, 'users', userId, 'conversations', safeConversationId, 'messages');
-    }
+const getConversationDocRef = (userId, conversationId = null) => {
+    const safeConversationId = normalizeConversationId(conversationId);
+    return doc(db, 'users', userId, 'conversations', safeConversationId);
+};
 
-    return collection(db, 'users', userId, 'messages');
+const getMessagesCollection = (userId, conversationId = null) => {
+    const safeConversationId = normalizeConversationId(conversationId);
+    return collection(db, 'users', userId, 'conversations', safeConversationId, 'messages');
 };
 
 const saveMessage = async (userId, role, content, conversationId = null) => {
     try {
+        const safeConversationId = normalizeConversationId(conversationId);
+        const conversationRef = getConversationDocRef(userId, safeConversationId);
+        await setDoc(conversationRef, {
+            conversationId: safeConversationId,
+            channel: safeConversationId.startsWith('wa_') ? 'whatsapp' : 'app',
+            participantKey: safeConversationId,
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
         const messagesRef = getMessagesCollection(userId, conversationId);
         await addDoc(messagesRef, {
             role,
             content,
-            conversationId: conversationId || null,
-            timestamp: serverTimestamp(),
+            conversationId: safeConversationId,
+            createdAt: serverTimestamp(),
         });
 
         // Update user interaction count
@@ -51,8 +77,7 @@ const logTokenUsage = async (userId, inputTokens, outputTokens) => {
         const data = {
             inputTokens,
             outputTokens,
-            totalTokens: inputTokens + outputTokens,
-            timestamp: serverTimestamp()
+            createdAt: serverTimestamp()
         };
         // Store usage under the user's document
         const usageRef = collection(db, 'users', userId, 'usage');
@@ -65,7 +90,7 @@ const logTokenUsage = async (userId, inputTokens, outputTokens) => {
 const getConversationHistory = async (userId, messageLimit = 10, conversationId = null) => {
     try {
         const messagesRef = getMessagesCollection(userId, conversationId);
-        const q = query(messagesRef, orderBy('timestamp', 'desc'), limit(messageLimit));
+        const q = query(messagesRef, orderBy('createdAt', 'desc'), limit(messageLimit));
 
         const querySnapshot = await getDocs(q);
         const history = [];
@@ -78,7 +103,24 @@ const getConversationHistory = async (userId, messageLimit = 10, conversationId 
             });
         });
 
-        return history.reverse(); // Return in chronological order
+        if (history.length > 0) {
+            return history.reverse(); // Return in chronological order
+        }
+
+        // Backward compatibility for legacy non-conversation messages collection
+        const legacyRef = collection(db, 'users', userId, 'messages');
+        const legacyQuery = query(legacyRef, orderBy('timestamp', 'desc'), limit(messageLimit));
+        const legacySnapshot = await getDocs(legacyQuery);
+        const legacyHistory = [];
+        legacySnapshot.forEach((legacyDoc) => {
+            const data = legacyDoc.data();
+            legacyHistory.push({
+                role: data.role,
+                parts: [{ text: data.content }]
+            });
+        });
+
+        return legacyHistory.reverse();
     } catch (error) {
         console.error('Error fetching conversation history:', error);
         return [];
@@ -100,8 +142,15 @@ const getDashboardStats = async (userId) => {
         const usageRef = collection(db, 'users', userId, 'usage');
         const usageSnapshot = await getDocs(usageRef);
         let totalTokens = 0;
-        usageSnapshot.forEach(doc => {
-            totalTokens += (doc.data().totalTokens || 0);
+        usageSnapshot.forEach((usageDoc) => {
+            const data = usageDoc.data();
+            if (typeof data.totalTokens === 'number') {
+                totalTokens += data.totalTokens;
+                return;
+            }
+            const inputTokens = Number(data.inputTokens || 0);
+            const outputTokens = Number(data.outputTokens || 0);
+            totalTokens += inputTokens + outputTokens;
         });
 
         // For "Recent Users", since this is a user dashboard, maybe show recent sessions or just self?
@@ -128,12 +177,27 @@ const getAISettings = async (userId) => {
     try {
         const docRef = doc(db, 'users', userId, 'settings', 'ai_config');
         const snapshot = await getDoc(docRef);
-
-        if (snapshot.exists()) {
-            return snapshot.data();
-        } else {
+        if (!snapshot.exists()) {
             return null;
         }
+
+        const aiConfig = snapshot.data();
+        const filesRef = collection(db, 'users', userId, 'ai_config_files');
+        const filesSnapshot = await getDocs(filesRef);
+        let files = filesSnapshot.docs.map((fileDoc) => ({
+            id: fileDoc.id,
+            ...fileDoc.data()
+        }));
+
+        if (files.length === 0 && Array.isArray(aiConfig.files)) {
+            // Backward compatibility for legacy array-based file storage
+            files = aiConfig.files;
+        }
+
+        return {
+            ...aiConfig,
+            files
+        };
     } catch (error) {
         console.error('Error getting AI settings:', error);
         return null;
@@ -143,7 +207,11 @@ const getAISettings = async (userId) => {
 const updateAISettings = async (userId, settings) => {
     try {
         const docRef = doc(db, 'users', userId, 'settings', 'ai_config');
-        await setDoc(docRef, settings, { merge: true });
+        const nextSettings = {};
+        if (typeof settings.context === 'string') nextSettings.context = settings.context;
+        if (typeof settings.model === 'string') nextSettings.model = settings.model;
+        nextSettings.updatedAt = serverTimestamp();
+        await setDoc(docRef, nextSettings, { merge: true });
         return true;
     } catch (error) {
         console.error('Error updating AI settings:', error);
@@ -153,13 +221,20 @@ const updateAISettings = async (userId, settings) => {
 
 const addFileContent = async (userId, fileData) => {
     try {
-        const docRef = doc(db, 'users', userId, 'settings', 'ai_config');
-        // Use arrayUnion to add the file object to the 'files' array
-        const { arrayUnion } = require('firebase/firestore');
-        // Ensure document exists first or setDoc with merge will handle it
-        await setDoc(docRef, {
-            files: arrayUnion(fileData)
-        }, { merge: true });
+        const filesRef = collection(db, 'users', userId, 'ai_config_files');
+        if (fileData?.id) {
+            const fileRef = doc(filesRef, String(fileData.id));
+            await setDoc(fileRef, {
+                ...fileData,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        } else {
+            await addDoc(filesRef, {
+                ...fileData,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+        }
         return true;
     } catch (error) {
         console.error('Error adding file content:', error);
@@ -169,19 +244,23 @@ const addFileContent = async (userId, fileData) => {
 
 const removeFileContent = async (userId, fileId) => {
     try {
-        const docRef = doc(db, 'users', userId, 'settings', 'ai_config');
-        const snapshot = await getDoc(docRef);
+        const fileRef = doc(db, 'users', userId, 'ai_config_files', fileId);
+        await deleteDoc(fileRef);
+
+        // Backward compatibility for legacy array-based file storage
+        const aiConfigRef = doc(db, 'users', userId, 'settings', 'ai_config');
+        const snapshot = await getDoc(aiConfigRef);
         if (snapshot.exists()) {
             const data = snapshot.data();
-            const files = data.files || [];
-            const updatedFiles = files.filter(f => f.id !== fileId);
-
-            await updateDoc(docRef, {
-                files: updatedFiles
-            });
-            return true;
+            if (Array.isArray(data.files)) {
+                const updatedFiles = data.files.filter((f) => f?.id !== fileId);
+                if (updatedFiles.length !== data.files.length) {
+                    await updateDoc(aiConfigRef, { files: updatedFiles });
+                }
+            }
         }
-        return false;
+
+        return true;
     } catch (error) {
         console.error('Error removing file content:', error);
         return false;
@@ -284,8 +363,30 @@ const updateUserProfile = async (userId, profileData) => {
 const getOnboardingStatus = async (userId) => {
     try {
         const docRef = doc(db, 'users', userId, 'settings', 'onboarding');
-        const snapshot = await getDoc(docRef);
-        return snapshot.exists() ? snapshot.data() : null;
+        const [snapshot, stepsSnapshot] = await Promise.all([
+            getDoc(docRef),
+            getDocs(collection(db, 'users', userId, 'onboarding_steps'))
+        ]);
+
+        if (!snapshot.exists()) return null;
+
+        const onboarding = snapshot.data();
+        const completedSteps = stepsSnapshot.docs
+            .map((stepDoc) => stepDoc.data())
+            .filter((step) => step.status === 'completed')
+            .map((step) => step.stepNo)
+            .filter((stepNo) => Number.isFinite(stepNo))
+            .sort((a, b) => a - b);
+
+        if (completedSteps.length === 0 && Array.isArray(onboarding.completedSteps)) {
+            // Legacy fallback
+            return onboarding;
+        }
+
+        return {
+            ...onboarding,
+            completedSteps
+        };
     } catch (error) {
         console.error('Error getting onboarding status:', error);
         return null;
@@ -299,9 +400,29 @@ const updateOnboardingStatus = async (userId, statusData) => {
     try {
         const docRef = doc(db, 'users', userId, 'settings', 'onboarding');
         await setDoc(docRef, {
-            ...statusData,
+            currentStep: Number(statusData.currentStep || 0),
+            completed: Boolean(statusData.completed),
             updatedAt: serverTimestamp()
         }, { merge: true });
+
+        if (Array.isArray(statusData.completedSteps)) {
+            const stepsRef = collection(db, 'users', userId, 'onboarding_steps');
+            const existingSnapshot = await getDocs(stepsRef);
+            const batch = writeBatch(db);
+
+            existingSnapshot.forEach((stepDoc) => batch.delete(stepDoc.ref));
+            for (const stepNo of statusData.completedSteps) {
+                const normalizedStep = Number(stepNo);
+                if (!Number.isFinite(normalizedStep)) continue;
+                const stepRef = doc(db, 'users', userId, 'onboarding_steps', `step_${normalizedStep}`);
+                batch.set(stepRef, {
+                    stepNo: normalizedStep,
+                    status: 'completed',
+                    updatedAt: serverTimestamp()
+                });
+            }
+            await batch.commit();
+        }
         return true;
     } catch (error) {
         console.error('Error updating onboarding status:', error);
