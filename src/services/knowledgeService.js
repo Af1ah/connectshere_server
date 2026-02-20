@@ -217,19 +217,29 @@ const searchKnowledge = async (userId, query, limit = 5) => {
     }
 
     try {
+        const timings = {};
+        const start = Date.now();
+
         // Generate embedding for query
+        const embedStart = Date.now();
         const queryEmbedding = await embeddingService.generateEmbedding(query);
+        timings.embedding = Date.now() - embedStart;
 
         // Query Firestore with vector search
         const knowledgeRef = adminDb.collection('users').doc(userId).collection('knowledge');
 
         // Use findNearest for vector similarity search
+        const searchStart = Date.now();
         const results = await knowledgeRef
             .findNearest('embedding', queryEmbedding, {
                 limit,
                 distanceMeasure: 'COSINE'
             })
             .get();
+        timings.vectorSearch = Date.now() - searchStart;
+        timings.total = Date.now() - start;
+
+        console.log(`[RAG] embed=${timings.embedding}ms, search=${timings.vectorSearch}ms, total=${timings.total}ms`);
 
         const relevantChunks = [];
         results.forEach(doc => {

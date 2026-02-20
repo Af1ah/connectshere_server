@@ -38,28 +38,65 @@ const extractTextFromModelResult = (result) => {
         .trim();
 };
 
+// Simple in-memory cache for settings (TTL: 60 seconds)
+const settingsCache = new Map();
+const CACHE_TTL_MS = 60000;
+
+const getCachedSettings = async (userId, fetcher, cacheKey) => {
+    const fullKey = `${userId}:${cacheKey}`;
+    const cached = settingsCache.get(fullKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+        return cached.data;
+    }
+    const data = await fetcher();
+    settingsCache.set(fullKey, { data, timestamp: Date.now() });
+    return data;
+};
+
 const generateResponse = async (userMessage, userId, senderPhone = 'Unknown', senderName = null, conversationId = null) => {
+    const startTime = Date.now();
+    const timings = {};
+
     if (!ai) {
         return "I'm currently offline. Please try again later.";
     }
 
-    // Save user message to Firebase
+    // Run multiple independent operations in PARALLEL for better performance
+    const parallelStart = Date.now();
+    
+    const [settings, ragContext, consultantSettings, history] = await Promise.all([
+        // 1. Get AI settings (cached)
+        getCachedSettings(userId, () => firebaseService.getAISettings(userId), 'ai'),
+        
+        // 2. Build RAG context
+        knowledgeService.buildContext(userId, userMessage).catch(error => {
+            console.error('Error fetching RAG context:', error);
+            return '';
+        }),
+        
+        // 3. Get consultant settings (cached)
+        getCachedSettings(userId, async () => {
+            try {
+                const consultantService = require('./consultantService');
+                return await consultantService.getSettings(userId);
+            } catch (e) { return null; }
+        }, 'consultant'),
+        
+        // 4. Get conversation history
+        userId ? firebaseService.getConversationHistory(userId, 10, conversationId) : Promise.resolve([])
+    ]);
+    
+    timings.parallel = Date.now() - parallelStart;
+
+    // Save user message (fire and forget - don't block on it)
     if (userId) {
-        await firebaseService.saveMessage(userId, 'user', userMessage, conversationId);
+        firebaseService.saveMessage(userId, 'user', userMessage, conversationId).catch(err => 
+            console.error('Error saving user message:', err)
+        );
     }
 
-    // Fetch dynamic settings
-    const settings = await firebaseService.getAISettings(userId);
     const baseContext = settings?.context || '';
     const currentModel = settings?.model || modelName;
-
-    // Use RAG to get relevant context based on user message
-    let ragContext = '';
-    try {
-        ragContext = await knowledgeService.buildContext(userId, userMessage);
-    } catch (error) {
-        console.error('Error fetching RAG context:', error);
-    }
 
     // Combine base context with RAG context
     let fullContext = baseContext;
@@ -69,12 +106,8 @@ const generateResponse = async (userMessage, userId, senderPhone = 'Unknown', se
 
     // Check if consultant booking is enabled and add instructions
     let consultantInstructions = '';
-    try {
-        const consultantService = require('./consultantService');
-        const consultantSettings = await consultantService.getSettings(userId);
-
-        if (consultantSettings?.enabled) {
-            consultantInstructions = `
+    if (consultantSettings?.enabled) {
+        consultantInstructions = `
 
 CONSULTANT BOOKING CAPABILITY:
 You can help users book consultations. When a user asks about:
@@ -105,9 +138,6 @@ EXAMPLE RESPONSES:
 ✅ "Got it! Let me show you available slots. [BOOKING:dates]"
 ❌ "Here are the dates: 1. Monday, 2. Tuesday..." (DON'T DO THIS)
 `;
-        }
-    } catch (error) {
-        console.error('Error loading consultant settings:', error);
     }
 
     // Define function declarations for consultant booking
@@ -116,8 +146,7 @@ EXAMPLE RESPONSES:
 
     try {
         consultantServiceRef = require('./consultantService');
-        const consultantSettings = await consultantServiceRef.getSettings(userId);
-
+        // Use already-fetched consultantSettings from parallel call
         if (consultantSettings?.enabled) {
             bookingTools.push({
                 functionDeclarations: [
@@ -244,10 +273,7 @@ ${consultantInstructions}`,
         ],
     };
 
-    let history = [];
-    if (userId) {
-        history = await firebaseService.getConversationHistory(userId, 10, conversationId);
-    }
+    // history already fetched in parallel block above
 
     const contents = [
         ...history,
@@ -261,6 +287,8 @@ ${consultantInstructions}`,
         },
     ];
 
+    // AI generation timing
+    const genStart = Date.now();
     try {
         let result = await ai.models.generateContent({
             model: currentModel,
@@ -377,11 +405,18 @@ ${consultantInstructions}`,
         inputTokens = Number.isFinite(inputTokens) ? inputTokens : 0;
         outputTokens = Number.isFinite(outputTokens) ? outputTokens : 0;
 
-        // Save AI response to Firebase
+        timings.generation = Date.now() - genStart;
+        timings.total = Date.now() - startTime;
+
+        // Log performance timings for debugging slow responses
+        console.log(`[Perf] User ${userId}: parallel=${timings.parallel}ms, gen=${timings.generation}ms, total=${timings.total}ms`);
+
+        // Save AI response to Firebase (fire and forget - don't block)
         if (userId && responseText) {
-            await firebaseService.saveMessage(userId, 'model', responseText, conversationId);
-            // Log token usage
-            await firebaseService.logTokenUsage(userId, inputTokens, outputTokens);
+            Promise.all([
+                firebaseService.saveMessage(userId, 'model', responseText, conversationId),
+                firebaseService.logTokenUsage(userId, inputTokens, outputTokens)
+            ]).catch(err => console.error('Error saving response/tokens:', err));
         }
 
         return responseText;
