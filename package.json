@@ -1,11 +1,24 @@
 {
-  "name": "cs_engine",
+  "name": "connectsphere",
   "version": "1.0.0",
-  "description": "this is a collage project ",
+  "description": "AI-powered no-code WhatsApp business automation platform with intelligent chatbots, RAG knowledge base, and consultant booking system",
+  "keywords": ["whatsapp", "ai", "gemini", "chatbot", "automation", "business", "rag", "firebase", "no-code"],
   "license": "ISC",
   "author": "Af1ah",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/af1ah/connectsphere"
+  },
+  "bugs": {
+    "url": "https://github.com/af1ah/connectsphere/issues"
+  },
+  "homepage": "https://connectsphere.dev",
   "type": "commonjs",
   "main": "index.js",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
   "scripts": {
     "start": "node index.js",
     "migrate:4nf": "node scripts/migrate-4nf.js",
