@@ -37,6 +37,14 @@ const setState = (phone, state) => {
 };
 
 /**
+ * Check if user is in an active booking flow
+ */
+const isInBookingFlow = (phone) => {
+    const state = getState(phone);
+    return state.step !== BOOKING_STEPS.IDLE;
+};
+
+/**
  * Clear booking state for a phone number
  */
 const clearState = (phone) => {
@@ -44,15 +52,30 @@ const clearState = (phone) => {
 };
 
 /**
- * Start a new booking flow
+ * Start a new booking flow - SMART version
+ * @param {string} phone - User phone/booking key
+ * @param {string|null} reason - Pre-extracted reason (from conversation)
+ * @param {string|null} name - Pre-extracted name (from WhatsApp pushName or conversation)
  */
-const startBooking = (phone, reason = null) => {
+const startBooking = (phone, reason = null, name = null) => {
+    // Determine starting step based on what we already have
+    let startStep = BOOKING_STEPS.AWAITING_REASON;
+    
+    if (reason && name) {
+        // We have both - go straight to date selection
+        startStep = BOOKING_STEPS.AWAITING_DATE;
+    } else if (reason) {
+        // We have reason but no name - we'll get name after slot
+        startStep = BOOKING_STEPS.AWAITING_DATE;
+    }
+    // If no reason, we start with AWAITING_REASON
+    
     setState(phone, {
-        step: reason ? BOOKING_STEPS.AWAITING_DATE : BOOKING_STEPS.AWAITING_REASON,
+        step: startStep,
         reason: reason,
         date: null,
         timeSlot: null,
-        name: null,
+        name: name, // Store name if available from WhatsApp
         startedAt: Date.now()
     });
     return getState(phone);
@@ -143,6 +166,45 @@ const cleanupStaleStates = () => {
 // Run cleanup every 10 minutes
 setInterval(cleanupStaleStates, 10 * 60 * 1000);
 
+/**
+ * Extract potential booking reason from message
+ * Returns reason if found, null otherwise
+ */
+const extractReasonFromMessage = (message) => {
+    if (!message || message.length < 5) return null;
+    
+    const reasonPatterns = [
+        /(?:book(?:ing)?|appointment|consultation|consult)\s+(?:for|about|regarding)?\s*[:"]?\s*(.{5,50})/i,
+        /(?:need|want|looking for)\s+(?:help|advice|consultation)\s+(?:with|on|about|for)\s+(.{5,50})/i,
+        /(?:regarding|about|for)\s+(.{5,50})$/i,
+    ];
+    
+    for (const pattern of reasonPatterns) {
+        const match = message.match(pattern);
+        if (match && match[1]) {
+            const reason = match[1].trim().replace(/["'.!?]+$/, '').trim();
+            if (reason.length >= 3 && reason.length <= 100) {
+                return reason;
+            }
+        }
+    }
+    
+    return null;
+};
+
+/**
+ * Check if we have enough info to skip steps
+ */
+const canSkipReasonStep = (phone) => {
+    const state = getState(phone);
+    return !!state.reason;
+};
+
+const canSkipNameStep = (phone) => {
+    const state = getState(phone);
+    return !!state.name;
+};
+
 module.exports = {
     BOOKING_STEPS,
     getState,
@@ -153,5 +215,9 @@ module.exports = {
     setTimeSlot,
     setName,
     isBookingAction,
-    parseButtonAction
+    parseButtonAction,
+    isInBookingFlow,
+    extractReasonFromMessage,
+    canSkipReasonStep,
+    canSkipNameStep
 };

@@ -1,5 +1,6 @@
 const firebaseService = require('../services/firebaseService');
 const knowledgeService = require('../services/knowledgeService');
+const aiService = require('../services/aiService');
 const fileParser = require('../utils/fileParser');
 
 const getSettings = async (req, res) => {
@@ -179,6 +180,38 @@ const deleteFile = async (req, res) => {
     }
 };
 
+/**
+ * Clear all user data (knowledge + conversations)
+ */
+const clearAllData = async (req, res) => {
+    try {
+        const userId = req.user.uid;
+        
+        // Clear AI settings cache
+        aiService.clearUserCache(userId);
+        
+        // Clear knowledge base
+        const knowledgeResult = await knowledgeService.clearAllKnowledge(userId);
+        
+        // Clear conversations
+        const conversationsResult = await firebaseService.clearAllConversations(userId);
+        
+        console.log(`User ${userId}: Cleared all data -`, { knowledgeResult, conversationsResult });
+        
+        res.json({
+            success: true,
+            message: 'All data cleared successfully',
+            cleared: {
+                knowledge: knowledgeResult.deleted || {},
+                conversations: conversationsResult.cleared || {}
+            }
+        });
+    } catch (error) {
+        console.error('Error clearing all data:', error);
+        res.status(500).json({ error: 'Failed to clear all data' });
+    }
+};
+
 module.exports = {
     getSettings,
     updateSettings,
@@ -186,5 +219,6 @@ module.exports = {
     deleteFile,
     addKnowledge,
     listKnowledge,
-    deleteKnowledge
+    deleteKnowledge,
+    clearAllData
 };

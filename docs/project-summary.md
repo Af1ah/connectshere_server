@@ -48,10 +48,12 @@ Frontend Dashboard ↔ Express API ↔ Firebase (Auth/Data)
 
 ### 🤖 **AI-Powered WhatsApp Bot**
 - Intelligent message processing using Google Gemini
-- Context-aware conversation handling
+- Context-aware conversation handling with embedded message history
+- **Pre-built responses** for common greetings (hi, hello, thanks, bye)
 - Automatic presence updates and read receipts
 - Interactive button messages and media support
 - Smart reply detection and response triggers
+- Multi-level caching (60s-5min) for reduced Firestore reads
 
 ### 📚 **RAG Knowledge Base System**
 - Document upload and processing (PDF, Word, Excel, CSV, TXT)
@@ -64,6 +66,8 @@ Frontend Dashboard ↔ Express API ↔ Firebase (Auth/Data)
 - Dynamic time slot management
 - Multi-timezone support (Asia/Kolkata default)
 - Staff schedule configuration
+- **Smart booking flow** - auto-extracts name from WhatsApp profile & reason from message
+- Multi-step booking state management with skip logic for existing data
 - Automated booking confirmations
 - Customer escalation from bot to human
 
@@ -126,11 +130,12 @@ connectsphere/
 
 ### **Key Services**
 - `whatsappService.js` - WhatsApp bot management & message handling
-- `aiService.js` - Gemini AI integration & response generation
-- `knowledgeService.js` - RAG knowledge base operations
-- `consultantService.js` - Booking system & staff management
-- `firebaseService.js` - Database operations & user management
+- `aiService.js` - Gemini AI integration, response generation & pre-built responses
+- `knowledgeService.js` - RAG knowledge base operations (5-min cache)
+- `consultantService.js` - Booking system, staff management & smart booking flow
+- `firebaseService.js` - Database operations, conversation management & auto-cleanup
 - `embeddingService.js` - Vector embeddings for semantic search
+- `bookingStateManager.js` - Multi-step booking conversation state tracking
 
 ---
 
@@ -212,4 +217,32 @@ connectsphere/
 
 ---
 
-*Last Updated: February 16, 2026*
+*Last Updated: February 21, 2026*
+
+---
+
+## 🔧 Performance Optimizations (v2.0)
+
+### **Firestore Read Reduction**
+- **Embedded Messages**: Conversations use embedded array instead of subcollections (90%+ read reduction)
+- **Multi-level Caching**:
+  - AI Settings: 60 second cache
+  - Consultant Settings: 2 minute cache
+  - RAG Knowledge: 5 minute cache
+- **Pre-built Responses**: Common patterns (greetings, thanks, bye) skip AI entirely
+- **Parallel Operations**: Independent Firestore reads executed concurrently
+
+### **Data Lifecycle Management**
+- **Auto-cleanup**: Conversations older than 2 days automatically deleted
+- **Usage Retention**: Usage logs kept indefinitely for analytics
+- **Max Messages**: 100 messages per conversation (oldest auto-trimmed)
+
+### **Storage Model**
+```
+# Old Model (Expensive)
+users/{userId}/conversations/{convId}/messages/{msgId}  ← N reads per conversation
+
+# New Model (Optimized)
+users/{userId}/conversations/{convId}
+├── messages: [...embedded array...]                   ← 1 read per conversation
+```

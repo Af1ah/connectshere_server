@@ -1,6 +1,6 @@
 const { db } = require('../config/firebase');
 const { doc, getDoc, setDoc, deleteDoc } = require('firebase/firestore');
-const { BufferJSON, initAuthCreds } = require('@rexxhayanasi/elaina-baileys');
+const { BufferJSON, initAuthCreds } = require('@kelvdra/baileys');
 
 const useFirebaseAuthState = async (userId) => {
     const collectionName = 'whatsapp_creds';

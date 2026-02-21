@@ -6,6 +6,85 @@ const knowledgeService = require('./knowledgeService');
 let ai = null;
 const modelName = 'gemini-3-flash-preview';
 
+// ==================== PRE-BUILT RESPONSES ====================
+// Common greetings that don't need AI processing - saves API calls & reads
+const GREETING_PATTERNS = [
+    /^(hi+|hey+|hello+|hii+|hyy+|hola|yo+)[\s!?.]*$/i,
+    /^(good\s*(morning|afternoon|evening|night))[\s!?.]*$/i,
+    /^(sup|wassup|whatsup|what'?s\s*up)[\s!?.]*$/i,
+    /^(howdy|hiya|heya)[\s!?.]*$/i,
+];
+
+const GREETING_RESPONSES = [
+    "Hey there! 👋 How can I help you today?",
+    "Hi! 👋 What can I do for you?",
+    "Hello! 👋 How may I assist you?",
+    "Hey! 👋 What brings you here today?",
+];
+
+const THANKS_PATTERNS = [
+    /^(thanks?|thank\s*you|thx|ty|tysm|thanku)[\s!?.]*$/i,
+    /^(ok\s*thanks?|okay\s*thanks?)[\s!?.]*$/i,
+];
+
+const THANKS_RESPONSES = [
+    "You're welcome! 😊 Let me know if you need anything else.",
+    "Happy to help! 😊 Anything else I can assist with?",
+    "No problem! 😊 Feel free to ask if you have more questions.",
+];
+
+const BYE_PATTERNS = [
+    /^(bye+|byee*|goodbye|good\s*bye|see\s*ya|cya|later|gtg)[\s!?.]*$/i,
+    /^(take\s*care|tc)[\s!?.]*$/i,
+];
+
+const BYE_RESPONSES = [
+    "Goodbye! 👋 Have a great day!",
+    "Take care! 👋 Feel free to reach out anytime.",
+    "Bye! 👋 See you next time!",
+];
+
+// REMOVED: OK_PATTERNS - too risky, "ok", "yes", "sure" are commonly used during conversations
+// These should go through normal AI processing to maintain context
+
+/**
+ * Check if message matches pre-built response patterns
+ * Returns response string if matched, null otherwise
+ */
+const getPrebuiltResponse = (message, isInBookingFlow = false) => {
+    const trimmed = (message || '').trim();
+    if (!trimmed || trimmed.length > 50) return null; // Skip long messages
+    
+    // Skip booking button IDs - these shouldn't reach AI at all
+    if (/^(date_|slot_|confirm_|cancel_|option_)/.test(trimmed)) {
+        return null;
+    }
+    
+    // Don't use pre-built responses during active booking flow
+    // User might say "hi" or "thanks" but mean something contextual
+    if (isInBookingFlow) {
+        return null;
+    }
+    
+    // Check greetings - only for standalone greetings
+    if (GREETING_PATTERNS.some(p => p.test(trimmed))) {
+        return GREETING_RESPONSES[Math.floor(Math.random() * GREETING_RESPONSES.length)];
+    }
+    
+    // Check thanks
+    if (THANKS_PATTERNS.some(p => p.test(trimmed))) {
+        return THANKS_RESPONSES[Math.floor(Math.random() * THANKS_RESPONSES.length)];
+    }
+    
+    // Check bye
+    if (BYE_PATTERNS.some(p => p.test(trimmed))) {
+        return BYE_RESPONSES[Math.floor(Math.random() * BYE_RESPONSES.length)];
+    }
+    
+    return null;
+};
+// ==============================================================
+
 const initialize = () => {
     if (process.env.GEMINI_API_KEY) {
         ai = new GoogleGenAI({
@@ -53,9 +132,35 @@ const getCachedSettings = async (userId, fetcher, cacheKey) => {
     return data;
 };
 
+const clearUserCache = (userId) => {
+    for (const key of settingsCache.keys()) {
+        if (key.startsWith(`${userId}:`)) {
+            settingsCache.delete(key);
+        }
+    }
+    console.log(`Cleared cache for user ${userId}`);
+};
+
 const generateResponse = async (userMessage, userId, senderPhone = 'Unknown', senderName = null, conversationId = null) => {
     const startTime = Date.now();
     const timings = {};
+
+    // ==================== PRE-BUILT RESPONSE CHECK ====================
+    // Check for common greetings/phrases BEFORE any expensive operations
+    // This saves: AI API call, Firestore reads, RAG search, etc.
+    const prebuiltResponse = getPrebuiltResponse(userMessage);
+    if (prebuiltResponse) {
+        console.log(`[AI] Pre-built response for: "${userMessage.substring(0, 20)}..." (${Date.now() - startTime}ms)`);
+        
+        // Save the conversation exchange (1 write instead of 2)
+        if (userId) {
+            firebaseService.saveConversationExchange(userId, userMessage, prebuiltResponse, conversationId)
+                .catch(err => console.error('Error saving prebuilt exchange:', err));
+        }
+        
+        return prebuiltResponse;
+    }
+    // ==================================================================
 
     if (!ai) {
         return "I'm currently offline. Please try again later.";
@@ -64,15 +169,23 @@ const generateResponse = async (userMessage, userId, senderPhone = 'Unknown', se
     // Run multiple independent operations in PARALLEL for better performance
     const parallelStart = Date.now();
     
+    // Helper: timeout wrapper to prevent slow operations from blocking
+    const withTimeout = (promise, ms, fallback) => 
+        Promise.race([promise, new Promise(resolve => setTimeout(() => resolve(fallback), ms))]);
+    
     const [settings, ragContext, consultantSettings, history] = await Promise.all([
         // 1. Get AI settings (cached)
         getCachedSettings(userId, () => firebaseService.getAISettings(userId), 'ai'),
         
-        // 2. Build RAG context
-        knowledgeService.buildContext(userId, userMessage).catch(error => {
-            console.error('Error fetching RAG context:', error);
-            return '';
-        }),
+        // 2. Build RAG context (with 3s timeout to prevent blocking on credential errors)
+        withTimeout(
+            knowledgeService.buildContext(userId, userMessage).catch(error => {
+                console.error('Error fetching RAG context:', error);
+                return '';
+            }),
+            3000,
+            ''
+        ),
         
         // 3. Get consultant settings (cached)
         getCachedSettings(userId, async () => {
@@ -88,12 +201,7 @@ const generateResponse = async (userMessage, userId, senderPhone = 'Unknown', se
     
     timings.parallel = Date.now() - parallelStart;
 
-    // Save user message (fire and forget - don't block on it)
-    if (userId) {
-        firebaseService.saveMessage(userId, 'user', userMessage, conversationId).catch(err => 
-            console.error('Error saving user message:', err)
-        );
-    }
+    // NOTE: User message will be saved together with response using saveConversationExchange
 
     const baseContext = settings?.context || '';
     const currentModel = settings?.model || modelName;
@@ -109,34 +217,30 @@ const generateResponse = async (userMessage, userId, senderPhone = 'Unknown', se
     if (consultantSettings?.enabled) {
         consultantInstructions = `
 
-CONSULTANT BOOKING CAPABILITY:
-You can help users book consultations. When a user asks about:
-- booking an appointment/consultation
-- scheduling a meeting with consultant/expert/doctor
-- checking availability for consultations
-- wanting advice or professional consultation
+CONSULTANT BOOKING (ONLY WHEN USER EXPLICITLY ASKS):
+You can help users book consultations ONLY when they EXPLICITLY request it.
 
-BOOKING FLOW (USE INTERACTIVE BUTTONS):
-1. First understand their need briefly (1 question max)
-2. Once ready to book, respond with EXACTLY this format:
-   "Great! Let me show you available dates. [BOOKING:dates]"
-   
-The [BOOKING:dates] tag will trigger interactive WhatsApp buttons for:
-- Date selection (buttons)
-- Time slot selection (buttons)  
-- Confirmation (buttons)
+TRIGGER BOOKING ONLY IF USER SAYS:
+- "I want to book" / "book appointment"
+- "schedule a consultation"
+- "I need an appointment"
 
-CRITICAL RULES:
-- When user wants to book, include [BOOKING:dates] at the end of your response
-- Do NOT list dates manually - the buttons will handle this
-- Keep pre-booking chat SHORT (1-2 messages max)
-- If user says "book", "appointment", "schedule" etc - trigger booking quickly
-- Timezone: Asia/Kolkata (IST)
+DO NOT trigger booking for:
+- General questions or greetings
+- Product inquiries
+- "I don't want to book" or similar rejections
+- When user hasn't asked for booking
 
-EXAMPLE RESPONSES:
-✅ "Sure! What would you like to consult about?"
-✅ "Got it! Let me show you available slots. [BOOKING:dates]"
-❌ "Here are the dates: 1. Monday, 2. Tuesday..." (DON'T DO THIS)
+WHEN USER WANTS TO BOOK:
+1. If reason is already clear from context, skip asking for reason
+2. Respond with: "[BOOKING:dates]" at the end
+
+EXAMPLE:
+User: "I want to book for PC advice"
+→ "Sure! Let me show available slots. [BOOKING:dates]"
+
+User: "Hi, tell me about your services"
+→ Just answer their question. DO NOT offer booking.
 `;
     }
 
@@ -411,17 +515,20 @@ ${consultantInstructions}`,
         // Log performance timings for debugging slow responses
         console.log(`[Perf] User ${userId}: parallel=${timings.parallel}ms, gen=${timings.generation}ms, total=${timings.total}ms`);
 
-        // Save AI response to Firebase (fire and forget - don't block)
+        // Save conversation exchange to Firebase (fire and forget - don't block)
+        // NEW: Single write for both user message + AI response
         if (userId && responseText) {
             Promise.all([
-                firebaseService.saveMessage(userId, 'model', responseText, conversationId),
+                firebaseService.saveConversationExchange(userId, userMessage, responseText, conversationId),
                 firebaseService.logTokenUsage(userId, inputTokens, outputTokens)
-            ]).catch(err => console.error('Error saving response/tokens:', err));
+            ]).catch(err => console.error('Error saving conversation/tokens:', err));
         }
 
         return responseText;
     } catch (error) {
-        console.error('Error generating AI response:', error);
+        console.error('Error generating AI response:', error?.message || error);
+        if (error?.status) console.error('API Status:', error.status);
+        if (error?.code) console.error('Error code:', error.code);
         return "I'm having trouble processing your request right now.";
     }
 };
@@ -429,5 +536,7 @@ ${consultantInstructions}`,
 module.exports = {
     initialize,
     generateResponse,
-    shouldReplyToMessage
+    shouldReplyToMessage,
+    clearUserCache,
+    getPrebuiltResponse
 };

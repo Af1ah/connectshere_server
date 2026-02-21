@@ -9,6 +9,27 @@ const {
     query, where, updateDoc, serverTimestamp, writeBatch
 } = require('firebase/firestore');
 
+// ==================== CACHING LAYER ====================
+const settingsCache = new Map();
+const SETTINGS_CACHE_TTL = 120000; // 2 minutes
+
+const getCachedSettings = (userId) => {
+    const entry = settingsCache.get(userId);
+    if (entry && Date.now() - entry.timestamp < SETTINGS_CACHE_TTL) {
+        return entry.data;
+    }
+    return null;
+};
+
+const setCachedSettings = (userId, data) => {
+    settingsCache.set(userId, { data, timestamp: Date.now() });
+};
+
+const invalidateSettingsCache = (userId) => {
+    settingsCache.delete(userId);
+};
+// ========================================================
+
 // Kolkata timezone
 const TIMEZONE = 'Asia/Kolkata';
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -121,6 +142,10 @@ const persistSchedule = async (userId, schedule) => {
  * Get consultant settings for a user
  */
 const getSettings = async (userId) => {
+    // Check cache first - saves 8 reads per call
+    const cached = getCachedSettings(userId);
+    if (cached) return cached;
+
     try {
         const docRef = doc(db, 'users', userId, 'settings', 'consultant_config');
         const snapshot = await getDoc(docRef);
@@ -139,11 +164,14 @@ const getSettings = async (userId) => {
                 settings.schedule = schedule;
             }
 
+            setCachedSettings(userId, settings);
             return settings;
         }
 
         // Return default settings if not found
-        return getDefaultSettings();
+        const defaults = getDefaultSettings();
+        setCachedSettings(userId, defaults);
+        return defaults;
     } catch (error) {
         console.error('Error getting consultant settings:', error);
         throw error;
@@ -167,6 +195,9 @@ const updateSettings = async (userId, settings) => {
             updatedAt: serverTimestamp()
         }, { merge: true });
         await persistSchedule(userId, sanitized.schedule);
+        
+        // Invalidate cache
+        invalidateSettingsCache(userId);
         return true;
     } catch (error) {
         console.error('Error updating consultant settings:', error);

@@ -1,4 +1,4 @@
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@rexxhayanasi/elaina-baileys');
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, makeCacheableSignalKeyStore } = require('@kelvdra/baileys');
 const useFirebaseAuthState = require('./firebaseAuthState');
 const aiService = require('./aiService');
 const firebaseService = require('./firebaseService');
@@ -6,7 +6,20 @@ const bookingState = require('./bookingStateManager');
 const pino = require('pino');
 
 const sessions = new Map(); // userId -> { sock, qr, status, retryCount }
+const processedMessages = new Map(); // messageId -> timestamp (for deduplication)
+const MESSAGE_DEDUPE_TTL = 60000; // 60 seconds
 const ENABLE_PRESENCE_UPDATES = process.env.WHATSAPP_PRESENCE_UPDATES === 'true';
+const logger = pino({ level: 'silent' });
+
+// Cleanup old processed message IDs periodically
+setInterval(() => {
+    const now = Date.now();
+    for (const [msgId, timestamp] of processedMessages) {
+        if (now - timestamp > MESSAGE_DEDUPE_TTL) {
+            processedMessages.delete(msgId);
+        }
+    }
+}, 30000);
 
 const getConversationKey = (senderPhone) => `wa_${String(senderPhone || 'unknown').replace(/[^0-9a-zA-Z_-]/g, '')}`;
 const getBookingKey = (userId, senderPhone) => `${userId}::${getConversationKey(senderPhone)}`;
@@ -135,10 +148,29 @@ const handleBookingButton = async (sock, jid, userId, bookingKey, phone, buttonI
 
         case 'slot':
             bookingState.setTimeSlot(bookingKey, action.value);
-            // Ask for name instead of showing confirmation
-            await sock.sendMessage(jid, {
-                text: '👤 *Please enter your name:*\n\n_Just type your name to continue..._'
-            });
+            
+            // SMART: Check if we already have the name from WhatsApp
+            const slotState = bookingState.getState(bookingKey);
+            if (slotState.name) {
+                // We have name, check if we have reason too
+                if (slotState.reason) {
+                    // We have everything! Show confirmation directly
+                    await sendConfirmationButtons(sock, jid, phone, slotState.date, action.value, slotState.reason, slotState.name);
+                } else {
+                    // Need reason
+                    bookingState.setState(bookingKey, {
+                        step: bookingState.BOOKING_STEPS.AWAITING_REASON
+                    });
+                    await sock.sendMessage(jid, {
+                        text: '📝 *Please share reason for consultation:*'
+                    });
+                }
+            } else {
+                // Need name
+                await sock.sendMessage(jid, {
+                    text: '👤 *Please enter your name:*\n\n_Just type your name to continue..._'
+                });
+            }
             return true;
 
         case 'confirm':
@@ -235,8 +267,9 @@ const processMessage = async (sock, msg, userId) => {
     if (!messageContent) return;
 
     try {
-        await sock.readMessages([msg.key]);
-        await updatePresence(sock, 'composing', msg.key.remoteJid);
+        // Fire-and-forget: read messages and show composing immediately (non-blocking)
+        sock.readMessages([msg.key]).catch(() => {});
+        updatePresence(sock, 'composing', msg.key.remoteJid);
 
         // Extract sender's phone number
         let senderPhone = 'Unknown';
@@ -260,7 +293,7 @@ const processMessage = async (sock, msg, userId) => {
         if (bookingState.isBookingAction(messageContent)) {
             const handled = await handleBookingButton(sock, remoteJid, userId, bookingKey, senderPhone, messageContent);
             if (handled) {
-                await updatePresence(sock, 'paused', remoteJid);
+                updatePresence(sock, 'paused', remoteJid);
                 return;
             }
         }
@@ -268,7 +301,7 @@ const processMessage = async (sock, msg, userId) => {
         // Check if user is in a booking flow and typing text (e.g., name)
         const textHandled = await handleBookingTextInput(sock, remoteJid, userId, bookingKey, senderPhone, messageContent);
         if (textHandled) {
-            await updatePresence(sock, 'paused', remoteJid);
+            updatePresence(sock, 'paused', remoteJid);
             return;
         }
 
@@ -288,14 +321,30 @@ const processMessage = async (sock, msg, userId) => {
             }
 
             if (action === 'dates') {
-                // Start booking flow with date selection
-                bookingState.startBooking(bookingKey, null);
-                await sock.sendMessage(remoteJid, {
-                    text: '📝 *What is the reason for consultation?*'
-                });
+                // SMART BOOKING: Try to extract reason from the original message
+                const extractedReason = bookingState.extractReasonFromMessage(messageContent);
+                
+                // Use WhatsApp pushName as default name if available
+                const defaultName = senderName && senderName.length >= 2 ? senderName : null;
+                
+                // Start booking with whatever info we already have
+                bookingState.startBooking(bookingKey, extractedReason, defaultName);
+                
+                const state = bookingState.getState(bookingKey);
+                
+                if (!state.reason) {
+                    // Need to ask for reason
+                    await sock.sendMessage(remoteJid, {
+                        text: '📝 *What is the reason for consultation?*'
+                    });
+                } else {
+                    // We have reason, show dates directly
+                    console.log(`[Booking] Auto-extracted reason: "${state.reason}"${defaultName ? `, name: "${defaultName}"` : ''}`);
+                    await sendDateButtons(sock, remoteJid, userId);
+                }
             }
 
-            await updatePresence(sock, 'paused', remoteJid);
+            updatePresence(sock, 'paused', remoteJid);
             return;
         }
 
@@ -320,11 +369,11 @@ const processMessage = async (sock, msg, userId) => {
             await sock.sendMessage(remoteJid, messageOptions);
         }
 
-        await updatePresence(sock, 'paused', remoteJid);
+        updatePresence(sock, 'paused', remoteJid);
 
     } catch (error) {
         console.error(`User ${userId}: Error processing message:`, error);
-        await updatePresence(sock, 'paused', msg.key.remoteJid);
+        updatePresence(sock, 'paused', msg.key.remoteJid);
     }
 };
 
@@ -364,10 +413,16 @@ const initialize = async (userId) => {
     const { state, saveCreds } = await useFirebaseAuthState(userId);
 
     const sock = makeWASocket({
-        auth: state,
-        logger: pino({ level: 'silent' }),
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, logger)
+        },
+        logger,
+        browser: ['ConnectSphere', 'Chrome', '125.0.0'],
         connectTimeoutMs: 60000,
         retryRequestDelayMs: 2000,
+        markOnlineOnConnect: false, // VPS-friendly: don't mark online to receive push notifications
+        syncFullHistory: false, // VPS-friendly: don't sync full history to save memory
     });
 
     // Initialize session state
@@ -438,8 +493,18 @@ const initialize = async (userId) => {
     });
 
     sock.ev.on('messages.upsert', async m => {
-        const msg = m.messages[0];
-        if (!msg.key.fromMe && m.type === 'notify') {
+        for (const msg of m.messages) {
+            // Skip messages from self or non-notify types
+            if (msg.key.fromMe || m.type !== 'notify') continue;
+            
+            // Deduplication: skip if already processed
+            const msgId = msg.key.id;
+            if (processedMessages.has(msgId)) {
+                console.log(`User ${userId}: Skipping duplicate message ${msgId}`);
+                continue;
+            }
+            processedMessages.set(msgId, Date.now());
+            
             const session = sessions.get(userId);
 
             if (session && session.status === 'connected') {

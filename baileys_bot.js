@@ -1,10 +1,20 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys')
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore } = require('@kelvdra/baileys')
+const pino = require('pino')
+
+const logger = pino({ level: 'silent' })
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
 
     const sock = makeWASocket({
-        auth: state,
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, logger)
+        },
+        logger,
+        browser: ['ConnectSphere', 'Chrome', '125.0.0'],
+        markOnlineOnConnect: false, // VPS-friendly
+        syncFullHistory: false,     // Save memory
         printQRInTerminal: true
     })
 
@@ -24,12 +34,12 @@ async function connectToWhatsApp() {
     })
 
     sock.ev.on('messages.upsert', async m => {
-        // console.log(JSON.stringify(m, undefined, 2))
-
         const msg = m.messages[0]
         if (!msg.key.fromMe && m.type === 'notify') {
             const messageContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text
             if (messageContent && messageContent.toLowerCase() === 'hi') {
+                // Fire-and-forget read receipt
+                sock.readMessages([msg.key]).catch(() => {})
                 await sock.sendMessage(msg.key.remoteJid, { text: 'hello' })
             }
         }

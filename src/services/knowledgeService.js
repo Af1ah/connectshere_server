@@ -12,6 +12,44 @@ let adminDb = null;
 const BATCH_WRITE_LIMIT = 400;
 let isCredentialFailureDisabled = false;
 
+// ==================== RAG CACHE LAYER ====================
+// Cache vector search results to reduce expensive Firestore vector queries
+const ragCache = new Map();
+const RAG_CACHE_TTL = 300000; // 5 minutes - knowledge doesn't change often
+const MAX_CACHE_SIZE = 100;
+
+const getCacheKey = (userId, query) => {
+    // Normalize query for better cache hits
+    const normalized = query.toLowerCase().trim().replace(/\s+/g, ' ');
+    return `${userId}:${crypto.createHash('md5').update(normalized).digest('hex').slice(0, 12)}`;
+};
+
+const getCachedRag = (key) => {
+    const entry = ragCache.get(key);
+    if (entry && Date.now() - entry.timestamp < RAG_CACHE_TTL) {
+        return entry.data;
+    }
+    return null;
+};
+
+const setCachedRag = (key, data) => {
+    // Evict oldest entries if cache is full
+    if (ragCache.size >= MAX_CACHE_SIZE) {
+        const oldestKey = ragCache.keys().next().value;
+        ragCache.delete(oldestKey);
+    }
+    ragCache.set(key, { data, timestamp: Date.now() });
+};
+
+const invalidateUserRagCache = (userId) => {
+    for (const key of ragCache.keys()) {
+        if (key.startsWith(`${userId}:`)) {
+            ragCache.delete(key);
+        }
+    }
+};
+// =========================================================
+
 const resolveExistingCredentialPath = () => {
     const explicitCredPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
     const defaultServiceAccountPath = path.join(process.cwd(), 'alex-agent-b2eb1-firebase-adminsdk-fbsvc-967a1bfb30.json');
@@ -193,6 +231,9 @@ const addKnowledge = async (userId, content, source = 'manual', category = 'gene
 
         await commitChunkedWrites(writes);
 
+        // Invalidate RAG cache for this user
+        invalidateUserRagCache(userId);
+        
         return { success: true, chunksAdded: upsertedChunks };
     } catch (error) {
         if (isCredentialError(error)) {
@@ -211,9 +252,17 @@ const addKnowledge = async (userId, content, source = 'manual', category = 'gene
  * @param {number} limit - Max results to return
  * @returns {Promise<Array<{content: string, source: string, score: number}>>}
  */
-const searchKnowledge = async (userId, query, limit = 5) => {
+const searchKnowledge = async (userId, queryText, limit = 5) => {
     if (!adminDb) {
         return [];
+    }
+
+    // Check cache first - saves vector search reads
+    const cacheKey = getCacheKey(userId, queryText);
+    const cached = getCachedRag(cacheKey);
+    if (cached) {
+        console.log(`[RAG] Cache hit for user ${userId}`);
+        return cached;
     }
 
     try {
@@ -222,7 +271,7 @@ const searchKnowledge = async (userId, query, limit = 5) => {
 
         // Generate embedding for query
         const embedStart = Date.now();
-        const queryEmbedding = await embeddingService.generateEmbedding(query);
+        const queryEmbedding = await embeddingService.generateEmbedding(queryText);
         timings.embedding = Date.now() - embedStart;
 
         // Query Firestore with vector search
@@ -252,6 +301,8 @@ const searchKnowledge = async (userId, query, limit = 5) => {
             });
         });
 
+        // Cache the results
+        setCachedRag(cacheKey, relevantChunks);
         return relevantChunks;
     } catch (error) {
         if (isCredentialError(error)) {
@@ -322,6 +373,9 @@ const deleteKnowledgeBySource = async (userId, source) => {
         writes.push({ type: 'delete', ref: sourceRef });
 
         await commitChunkedWrites(writes);
+        
+        // Invalidate RAG cache
+        invalidateUserRagCache(userId);
         return true;
     } catch (error) {
         if (isCredentialError(error)) {
@@ -330,6 +384,58 @@ const deleteKnowledgeBySource = async (userId, source) => {
         }
         console.error('Error deleting knowledge:', error);
         return false;
+    }
+};
+
+/**
+ * Clear ALL knowledge for a user
+ * @param {string} userId - User ID
+ * @returns {Promise<{success: boolean, deleted: number}>}
+ */
+const clearAllKnowledge = async (userId) => {
+    if (!adminDb) {
+        return { success: false, error: 'Knowledge service not initialized' };
+    }
+
+    try {
+        const knowledgeRef = adminDb.collection('users').doc(userId).collection('knowledge');
+        const sourcesRef = adminDb.collection('users').doc(userId).collection('knowledge_sources');
+        
+        // Get all knowledge docs
+        const knowledgeSnapshot = await knowledgeRef.get();
+        const sourcesSnapshot = await sourcesRef.get();
+        
+        const writes = [];
+        
+        knowledgeSnapshot.forEach(doc => {
+            writes.push({ type: 'delete', ref: doc.ref });
+        });
+        
+        sourcesSnapshot.forEach(doc => {
+            writes.push({ type: 'delete', ref: doc.ref });
+        });
+        
+        await commitChunkedWrites(writes);
+        
+        // Invalidate RAG cache
+        invalidateUserRagCache(userId);
+        
+        console.log(`User ${userId}: Cleared ${knowledgeSnapshot.size} knowledge chunks, ${sourcesSnapshot.size} sources`);
+        
+        return {
+            success: true,
+            deleted: {
+                chunks: knowledgeSnapshot.size,
+                sources: sourcesSnapshot.size
+            }
+        };
+    } catch (error) {
+        if (isCredentialError(error)) {
+            disableRagOnCredentialFailure(error);
+            return { success: false, error: 'Knowledge service credentials are not configured' };
+        }
+        console.error('Error clearing all knowledge:', error);
+        return { success: false, error: error.message };
     }
 };
 
@@ -360,5 +466,6 @@ module.exports = {
     searchKnowledge,
     listKnowledge,
     deleteKnowledgeBySource,
+    clearAllKnowledge,
     buildContext
 };

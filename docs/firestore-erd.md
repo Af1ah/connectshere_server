@@ -1,5 +1,12 @@
 # Firestore ER Diagram (4NF)
 
+> **Last Updated:** February 21, 2026
+> 
+> **Recent Changes:**
+> - Messages now embedded in CONVERSATION document (reduces reads by 90%+)
+> - Auto-cleanup: conversations older than 2 days are deleted
+> - Usage logs retained indefinitely for analytics
+
 ```mermaid
 erDiagram
     USER {
@@ -73,20 +80,18 @@ erDiagram
 
     CONVERSATION {
         string conversationId PK
-        string userId FK
+        string odId FK
         string channel
         string participantKey
+        array messages "embedded array"
         timestamp createdAt
         timestamp updatedAt
     }
 
-    MESSAGE {
-        string messageId PK
-        string conversationId FK
-        string userId FK
-        string role
+    CONVERSATION_MESSAGE {
+        string role "user or model"
         string content
-        timestamp createdAt
+        timestamp timestamp
     }
 
     USAGE_LOG {
@@ -165,7 +170,6 @@ erDiagram
     USER ||--o{ ONBOARDING_STEP : has
     USER ||--o{ CONSULTANT_DAY_SCHEDULE : has
     USER ||--o{ CONVERSATION : owns
-    USER ||--o{ MESSAGE : owns
     USER ||--o{ USAGE_LOG : logs
     USER ||--o{ MESSAGE_QUEUE : queues
     USER ||--o{ BOOKING : receives
@@ -173,6 +177,54 @@ erDiagram
     USER ||--o{ KNOWLEDGE_CHUNK : stores
     USER ||--o{ WHATSAPP_CRED : stores
 
-    CONVERSATION ||--o{ MESSAGE : contains
+    CONVERSATION ||--|{ CONVERSATION_MESSAGE : "embeds (max 100)"
     KNOWLEDGE_SOURCE ||--o{ KNOWLEDGE_CHUNK : groups
 ```
+
+---
+
+## Data Flow Optimizations
+
+### Conversation Storage (New Model)
+Messages are now **embedded** within the conversation document instead of stored as separate documents:
+
+```
+users/{userId}/conversations/{conversationId}
+├── channel: "whatsapp"
+├── participantKey: "919876543210"
+├── messages: [                    ← Embedded array (max 100)
+│   { role: "user", content: "Hi", timestamp: ... },
+│   { role: "model", content: "Hello!", timestamp: ... }
+│ ]
+├── createdAt: timestamp
+└── updatedAt: timestamp
+```
+
+**Benefits:**
+- 1 read per conversation instead of N reads (one per message)
+- Atomic updates for user+model message pairs
+- Reduced Firestore costs by 90%+
+
+### Caching Layers
+
+| Cache | TTL | Purpose |
+|-------|-----|---------|
+| AI Settings | 60s | Reduce settings reads |
+| Consultant Settings | 2min | Reduce booking config reads |
+| RAG Context | 5min | Cache vector search results |
+
+### Auto-Cleanup Rules
+
+| Data Type | Retention | Reason |
+|-----------|-----------|--------|
+| Conversations | 2 days | Keep context fresh, reduce storage |
+| Usage Logs | Forever | Analytics & billing records |
+| Bookings | Forever | Business records |
+
+### Pre-built Responses
+Common patterns bypass AI entirely:
+- Greetings: `hi`, `hello`, `hey`, etc.
+- Thanks: `thanks`, `thank you`, etc.
+- Bye: `goodbye`, `bye`, `see ya`, etc.
+
+**Saves:** AI API call + Firestore reads + RAG search

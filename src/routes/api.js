@@ -47,6 +47,9 @@ router.get('/knowledge', settingsController.listKnowledge);
 router.post('/knowledge', settingsController.addKnowledge);
 router.delete('/knowledge/:source', settingsController.deleteKnowledge);
 
+// Clear all user data (knowledge + conversations)
+router.delete('/user/data', settingsController.clearAllData);
+
 // Consultant Booking Routes
 router.get('/consultant/settings', consultantController.getSettings);
 router.post('/consultant/settings', consultantController.updateSettings);
