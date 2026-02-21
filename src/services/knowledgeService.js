@@ -252,13 +252,77 @@ const addKnowledge = async (userId, content, source = 'manual', category = 'gene
  * @param {number} limit - Max results to return
  * @returns {Promise<Array<{content: string, source: string, score: number}>>}
  */
-const searchKnowledge = async (userId, queryText, limit = 5) => {
+// ==================== CATEGORY DETECTION ====================
+// Detect which knowledge categories are relevant to the message
+const CATEGORY_PATTERNS = {
+    product: [
+        /product|hardware|software|laptop|pc|computer|device|model|spec|feature/i,
+        /buy|purchase|price|cost|rate|compare|recommend/i,
+        /brand|intel|amd|nvidia|asus|dell|hp|lenovo/i,
+    ],
+    service: [
+        /service|repair|fix|support|help|install|setup|configure/i,
+        /consult|booking|appointment|schedule|visit/i,
+        /troubleshoot|diagnose|check|inspect/i,
+    ],
+    policy: [
+        /policy|return|refund|warranty|guarantee|terms|condition/i,
+        /payment|cancel|exchange|replace/i,
+    ],
+    faq: [
+        /how (do|can|to)|what (is|are)|why|when|where/i,
+        /common|frequent|usually|typically|normal/i,
+    ],
+};
+
+/**
+ * Detect relevant categories from user message
+ * @param {string} message - User message
+ * @returns {{ categories: string[], chunkLimit: number }} - Categories and how many chunks to fetch
+ */
+const detectRelevantCategories = (message) => {
+    const categories = new Set(['general']); // Always include general
+    let matchCount = 0;
+    
+    for (const [category, patterns] of Object.entries(CATEGORY_PATTERNS)) {
+        if (patterns.some(p => p.test(message))) {
+            categories.add(category);
+            matchCount++;
+        }
+    }
+    
+    // If only general matched, add faq as fallback for questions
+    if (categories.size === 1 && /\?/.test(message)) {
+        categories.add('faq');
+    }
+    
+    // Dynamic chunk limit based on complexity
+    // Simple: 1 chunk, Multi-category: 2-3 chunks
+    let chunkLimit = 1; // Default: 1 chunk (AI is smart enough)
+    if (matchCount >= 2) {
+        chunkLimit = 3; // Complex query spanning multiple topics
+    } else if (message.length > 100 || /compare|difference|vs|between/i.test(message)) {
+        chunkLimit = 2; // Longer or comparison queries need more context
+    }
+    
+    return { categories: Array.from(categories), chunkLimit };
+};
+// ============================================================
+
+const searchKnowledge = async (userId, queryText, limit = null) => {
     if (!adminDb) {
         return [];
     }
 
-    // Check cache first - saves vector search reads
-    const cacheKey = getCacheKey(userId, queryText);
+    // Auto-detect categories and chunk limit
+    const detected = detectRelevantCategories(queryText);
+    const relevantCategories = detected.categories;
+    const chunkLimit = limit || detected.chunkLimit; // Use provided limit or auto-detected
+    
+    console.log(`[RAG] Categories: ${relevantCategories.join(', ')}, Chunks: ${chunkLimit}`);
+
+    // Check cache first - include categories in cache key
+    const cacheKey = getCacheKey(userId, `${queryText}:${relevantCategories.sort().join(',')}:${chunkLimit}`);
     const cached = getCachedRag(cacheKey);
     if (cached) {
         console.log(`[RAG] Cache hit for user ${userId}`);
@@ -278,10 +342,16 @@ const searchKnowledge = async (userId, queryText, limit = 5) => {
         const knowledgeRef = adminDb.collection('users').doc(userId).collection('knowledge');
 
         // Use findNearest for vector similarity search
+        // Note: Firestore vector search doesn't support WHERE + findNearest together
+        // So we fetch more results and filter client-side
         const searchStart = Date.now();
+        const fetchLimit = relevantCategories.length === 1 && relevantCategories[0] === 'general' 
+            ? chunkLimit 
+            : chunkLimit * 2; // Fetch more to filter
+        
         const results = await knowledgeRef
             .findNearest('embedding', queryEmbedding, {
-                limit,
+                limit: fetchLimit,
                 distanceMeasure: 'COSINE'
             })
             .get();
@@ -293,17 +363,23 @@ const searchKnowledge = async (userId, queryText, limit = 5) => {
         const relevantChunks = [];
         results.forEach(doc => {
             const data = doc.data();
-            relevantChunks.push({
-                id: doc.id,
-                content: data.content,
-                source: data.source,
-                category: data.category
-            });
+            // Filter by category (general always passes)
+            if (relevantCategories.includes(data.category) || data.category === 'general') {
+                relevantChunks.push({
+                    id: doc.id,
+                    content: data.content,
+                    source: data.source,
+                    category: data.category
+                });
+            }
         });
 
+        // Limit results and prioritize exact category matches
+        const limitedChunks = relevantChunks.slice(0, chunkLimit);
+
         // Cache the results
-        setCachedRag(cacheKey, relevantChunks);
-        return relevantChunks;
+        setCachedRag(cacheKey, limitedChunks);
+        return limitedChunks;
     } catch (error) {
         if (isCredentialError(error)) {
             disableRagOnCredentialFailure(error);
@@ -446,7 +522,8 @@ const clearAllKnowledge = async (userId) => {
  * @returns {Promise<string>} - Retrieved context
  */
 const buildContext = async (userId, message) => {
-    const relevantChunks = await searchKnowledge(userId, message, 5);
+    // searchKnowledge auto-detects chunk limit based on query complexity
+    const relevantChunks = await searchKnowledge(userId, message);
 
     if (relevantChunks.length === 0) {
         return '';
@@ -454,7 +531,7 @@ const buildContext = async (userId, message) => {
 
     let context = '--- RELEVANT KNOWLEDGE ---\n';
     relevantChunks.forEach((chunk, i) => {
-        context += `\n[${i + 1}] (Source: ${chunk.source})\n${chunk.content}\n`;
+        context += `\n[${chunk.category}] ${chunk.content}\n`;
     });
 
     return context;
@@ -467,5 +544,6 @@ module.exports = {
     listKnowledge,
     deleteKnowledgeBySource,
     clearAllKnowledge,
-    buildContext
+    buildContext,
+    detectRelevantCategories
 };

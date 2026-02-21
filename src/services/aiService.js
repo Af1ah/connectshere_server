@@ -44,6 +44,60 @@ const BYE_RESPONSES = [
     "Bye! 👋 See you next time!",
 ];
 
+// ==================== SMART CONTEXT DETECTION ====================
+// Detect if message needs full context (RAG, booking) vs lightweight response
+const SIMPLE_CHAT_PATTERNS = [
+    /^(how are you|how r u|how're you|hru|how do you do)[\s?!.]*$/i,
+    /^(what'?s up|sup|wassup|whatsup)[\s?!.]*$/i,
+    /^(good|great|fine|ok|okay|cool|nice|awesome|perfect|alright)[\s!.]*$/i,
+    /^(yes|no|yeah|yep|nope|nah|sure|maybe)[\s!.]*$/i,
+    /^(lol|haha|hehe|😂|😊|👍|🙏|❤️|🔥)[\s!.]*$/i,
+    /^(same|me too|agreed|exactly|right|true)[\s!.]*$/i,
+    /^(nothing|nm|ntg|not much)[\s!.]*$/i,
+    /^(i see|got it|understood|makes sense|i understand)[\s!.]*$/i,
+];
+
+const BOOKING_INTENT_PATTERNS = [
+    /book|appointment|schedule|slot|consult|meet|meeting/i,
+    /available.*time|when.*free|when.*available/i,
+];
+
+const KNOWLEDGE_INTENT_PATTERNS = [
+    /price|cost|how much|charge|fee|rate/i,
+    /service|product|offer|provide|sell/i,
+    /policy|return|refund|warranty|guarantee/i,
+    /how (do|can|to)|what (is|are)|tell me|explain/i,
+    /support|help with|issue|problem|fix|repair/i,
+    /contact|email|phone|address|location|hours/i,
+];
+
+/**
+ * Analyze message to determine what context is needed
+ * Returns: { needsRAG: boolean, needsBooking: boolean, historyLimit: number, isSimple: boolean }
+ */
+const analyzeMessageIntent = (message) => {
+    const trimmed = (message || '').trim();
+    
+    // Simple chat - minimal context needed
+    if (trimmed.length < 30 && SIMPLE_CHAT_PATTERNS.some(p => p.test(trimmed))) {
+        return { needsRAG: false, needsBooking: false, historyLimit: 3, isSimple: true };
+    }
+    
+    // Booking intent - needs booking tools but maybe not full RAG
+    if (BOOKING_INTENT_PATTERNS.some(p => p.test(trimmed))) {
+        return { needsRAG: false, needsBooking: true, historyLimit: 5, isSimple: false };
+    }
+    
+    // Knowledge query - needs RAG
+    if (KNOWLEDGE_INTENT_PATTERNS.some(p => p.test(trimmed))) {
+        return { needsRAG: true, needsBooking: false, historyLimit: 5, isSimple: false };
+    }
+    
+    // Default: full context for longer/complex messages
+    return { needsRAG: true, needsBooking: true, historyLimit: 10, isSimple: false };
+};
+// ==================================================================
+
 // REMOVED: OK_PATTERNS - too risky, "ok", "yes", "sure" are commonly used during conversations
 // These should go through normal AI processing to maintain context
 
@@ -166,6 +220,12 @@ const generateResponse = async (userMessage, userId, senderPhone = 'Unknown', se
         return "I'm currently offline. Please try again later.";
     }
 
+    // ==================== SMART CONTEXT LOADING ====================
+    // Analyze message to determine what context is actually needed
+    const intent = analyzeMessageIntent(userMessage);
+    console.log(`[AI] Intent: RAG=${intent.needsRAG}, Booking=${intent.needsBooking}, Simple=${intent.isSimple}, History=${intent.historyLimit}`);
+    // ===============================================================
+
     // Run multiple independent operations in PARALLEL for better performance
     const parallelStart = Date.now();
     
@@ -177,26 +237,26 @@ const generateResponse = async (userMessage, userId, senderPhone = 'Unknown', se
         // 1. Get AI settings (cached)
         getCachedSettings(userId, () => firebaseService.getAISettings(userId), 'ai'),
         
-        // 2. Build RAG context (with 3s timeout to prevent blocking on credential errors)
-        withTimeout(
+        // 2. Build RAG context ONLY if needed (skip for simple chats)
+        intent.needsRAG ? withTimeout(
             knowledgeService.buildContext(userId, userMessage).catch(error => {
                 console.error('Error fetching RAG context:', error);
                 return '';
             }),
             3000,
             ''
-        ),
+        ) : Promise.resolve(''),
         
-        // 3. Get consultant settings (cached)
-        getCachedSettings(userId, async () => {
+        // 3. Get consultant settings ONLY if booking might be needed
+        intent.needsBooking ? getCachedSettings(userId, async () => {
             try {
                 const consultantService = require('./consultantService');
                 return await consultantService.getSettings(userId);
             } catch (e) { return null; }
-        }, 'consultant'),
+        }, 'consultant') : Promise.resolve(null),
         
-        // 4. Get conversation history
-        userId ? firebaseService.getConversationHistory(userId, 10, conversationId) : Promise.resolve([])
+        // 4. Get conversation history (limited based on intent)
+        userId ? firebaseService.getConversationHistory(userId, intent.historyLimit, conversationId) : Promise.resolve([])
     ]);
     
     timings.parallel = Date.now() - parallelStart;
@@ -314,67 +374,37 @@ User: "Hi, tell me about your services"
         console.error('Error setting up booking tools:', error);
     }
 
+    // ==================== DYNAMIC SYSTEM PROMPT ====================
+    // Use lightweight prompt for simple chats to save tokens
+    let systemPrompt;
+    
+    if (intent.isSimple) {
+        // ~100 tokens vs ~500 tokens for full prompt
+        systemPrompt = `You are a friendly WhatsApp business assistant.
+Keep responses SHORT (1-2 sentences max). Be warm and conversational.
+Context: ${baseContext.substring(0, 200)}`;
+    } else {
+        // Full prompt for complex queries
+        systemPrompt = `You are 'ConnectSphere', a 2026-grade WhatsApp business assistant.
+
+CRITICAL: Keep ALL responses SHORT (2-3 sentences max). One topic per message.
+
+RULES:
+1. KNOWLEDGE FIRST: Use RAG knowledge as truth. Don't invent prices/policies.
+2. WHATSAPP STYLE: Short sentences, friendly tone, *bold* for emphasis.
+3. ONE STEP AT A TIME: Give one step, ask "Done?", then continue.
+
+${fullContext ? `\nKNOWLEDGE:\n${fullContext}` : ''}
+${consultantInstructions}`;
+    }
+    // ===============================================================
+
     const config = {
         temperature: 0.7,
-        maxOutputTokens: 500,
+        maxOutputTokens: intent.isSimple ? 150 : 500,
         mediaResolution: 'MEDIA_RESOLUTION_UNSPECIFIED',
-        tools: bookingTools,
-        systemInstruction: [
-            {
-                text: `You are 'ConnectSphere', a 2026-grade WhatsApp business assistant.
-
-CRITICAL RULE: Keep ALL responses EXTREMELY SHORT (maximum 200 characters or 2-3 short sentences). One topic per message only!
-
-PRIMARY DIRECTIVES:
-1. KNOWLEDGE BASE FIRST: Treat uploaded RAG knowledge as the source of truth. Use base context only as behavior style, not factual policy.
-2. GROUNDING WITH HELPFULNESS: If exact details are missing, provide a safe next step and ask one short follow-up.
-3. ZERO HALLUCINATION: Do not invent specific prices or policies not in the text.
-3. WHATSAPP STYLE: 
-   - MAXIMUM 2-3 SHORT SENTENCES per reply.
-   - ONE topic or question at a time. Never combine multiple topics.
-   - Use a step-by-step Q&A approach: Give ONE step, ask if done, then continue.
-   - Use natural, friendly, human-like language.
-   - Use WhatsApp's native formatting when needed:
-     * *bold text* for emphasis
-     * _italic text_ for slight emphasis
-   - For lists, keep them SHORT (max 3 items):
-     Example: "We offer:\n- Service A\n- Service B\n- Service C"
-   - Never write long paragraphs.
-
-CONVERSATION STYLE:
-- Think of it like quick text messages, not emails.
-- One question/answer at a time.
-- Examples of GOOD responses:
-  * "Got it! What's your email?"
-  * "Sure! First, *restart your device*. Done?"
-  * "Thanks! I'll create a ticket for you. Anything else?"
-  * "We have 3 plans:\n- Basic\n- Pro\n- Enterprise\n\nWhich interests you?"
-
-Examples of BAD responses (TOO LONG):
-  * "Thank you for reaching out. I can help you with that. First, you'll need to restart your device, then check the settings, and..."
-  * "We offer several services including..."
-
-CRITICAL RULES:
-- If question needs multiple steps: Give ONLY first step, ask "Done?", wait for reply
-- If listing options: Maximum 3-4 items, then ask which they want
-- If explaining: One sentence explanation, then ask "Need more details?"
-- NEVER explain everything at once
-- NEVER write more than 3 sentences
-
-TONE:
-- Warm, professional, helpful
-- Like texting a friend
-- Do not start with "According to..." or "As an AI..."
-
-GOAL:
-- Solve queries through SHORT back-and-forth conversation
-- One step at a time, confirm, then continue
-
-KNOWLEDGE + STYLE INPUT:
-${fullContext}
-${consultantInstructions}`,
-            }
-        ],
+        tools: intent.needsBooking ? bookingTools : [],
+        systemInstruction: [{ text: systemPrompt }],
     };
 
     // history already fetched in parallel block above
