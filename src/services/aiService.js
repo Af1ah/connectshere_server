@@ -78,22 +78,28 @@ const KNOWLEDGE_INTENT_PATTERNS = [
 const analyzeMessageIntent = (message) => {
     const trimmed = (message || '').trim();
     
-    // Simple chat - minimal context needed
-    if (trimmed.length < 30 && SIMPLE_CHAT_PATTERNS.some(p => p.test(trimmed))) {
+    // Simple chat - minimal context needed (ONLY for very short acknowledgments)
+    if (trimmed.length < 20 && SIMPLE_CHAT_PATTERNS.some(p => p.test(trimmed))) {
         return { needsRAG: false, needsBooking: false, historyLimit: 3, isSimple: true };
     }
     
-    // Booking intent - needs booking tools but maybe not full RAG
-    if (BOOKING_INTENT_PATTERNS.some(p => p.test(trimmed))) {
-        return { needsRAG: false, needsBooking: true, historyLimit: 5, isSimple: false };
+    // Check booking intent
+    const hasBookingIntent = BOOKING_INTENT_PATTERNS.some(p => p.test(trimmed));
+    
+    // Check knowledge intent
+    const hasKnowledgeIntent = KNOWLEDGE_INTENT_PATTERNS.some(p => p.test(trimmed));
+    
+    // If booking mentioned, prioritize booking (with optional RAG)
+    if (hasBookingIntent) {
+        return { needsRAG: hasKnowledgeIntent, needsBooking: true, historyLimit: 5, isSimple: false };
     }
     
-    // Knowledge query - needs RAG
-    if (KNOWLEDGE_INTENT_PATTERNS.some(p => p.test(trimmed))) {
-        return { needsRAG: true, needsBooking: false, historyLimit: 5, isSimple: false };
+    // Knowledge query only - BUT still enable booking tools (user might ask to book later)
+    if (hasKnowledgeIntent) {
+        return { needsRAG: true, needsBooking: true, historyLimit: 5, isSimple: false };
     }
     
-    // Default: full context for longer/complex messages
+    // Default: full context (enable everything)
     return { needsRAG: true, needsBooking: true, historyLimit: 10, isSimple: false };
 };
 // ==================================================================
