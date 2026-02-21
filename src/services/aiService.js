@@ -401,7 +401,7 @@ ${consultantInstructions}`;
 
     const config = {
         temperature: 0.7,
-        maxOutputTokens: intent.isSimple ? 150 : 500,
+        maxOutputTokens: 400, // Fixed: 150 was cutting off responses mid-sentence
         mediaResolution: 'MEDIA_RESOLUTION_UNSPECIFIED',
         tools: intent.needsBooking ? bookingTools : [],
         systemInstruction: [{ text: systemPrompt }],
