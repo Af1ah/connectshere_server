@@ -13,6 +13,7 @@ const CHUNK_SIZE = 800; // Characters per chunk
 const CHUNK_OVERLAP = 100; // Overlap between chunks
 const EMBEDDING_RETRIES = 3;
 const RETRY_DELAY_MS = 500;
+const MAX_EMBEDDING_DIMENSIONS = 2048; // Firestore vector limit
 
 /**
  * Initialize the embedding service
@@ -47,6 +48,12 @@ const generateEmbedding = async (text) => {
             const values = result?.embeddings?.[0]?.values || result?.embedding?.values;
             if (!Array.isArray(values)) {
                 throw new Error(`Embedding response from model "${model}" had no vector values`);
+            }
+
+            // Firestore vector limit: truncate if exceeds 2048 dimensions
+            if (values.length > MAX_EMBEDDING_DIMENSIONS) {
+                console.warn(`[Embedding] Truncating from ${values.length} to ${MAX_EMBEDDING_DIMENSIONS} dimensions`);
+                return values.slice(0, MAX_EMBEDDING_DIMENSIONS);
             }
 
             return values;
